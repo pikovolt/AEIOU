@@ -263,6 +263,7 @@ using System.Windows.Forms;
 using System.IO;
 using System.Xml;
 using System.Diagnostics;
+using System.Reflection;
 
 namespace AEIOU
 {
@@ -340,6 +341,13 @@ namespace AEIOU
         public Form1()
         {
             InitializeComponent();
+
+            //datagridviewのダブルバッファを有効にする
+            //参考:http://raluck.exblog.jp/14873007/
+            typeof(DataGridView).
+                GetProperty("DoubleBuffered",
+                    BindingFlags.Instance | BindingFlags.NonPublic).
+                SetValue(this.dataGridView1, true, null);
 
             //コマンドラインを配列で取得する
             // →起動スイッチのコマ数指定などは削除（⇒初期設定ファイルに移譲）
