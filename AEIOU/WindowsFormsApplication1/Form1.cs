@@ -342,6 +342,9 @@ namespace AEIOU
         {
             InitializeComponent();
 
+            // 自分のウィンドウハンドルを取得しておく（tooltip表示中に、違うウィンドウハンドルを取得してしまうので）
+            this.owner = Control.FromHandle(this.Handle);
+
             //datagridviewのダブルバッファを有効にする
             //参考:http://raluck.exblog.jp/14873007/
             typeof(DataGridView).
@@ -365,6 +368,18 @@ namespace AEIOU
                 this.Location = new Point(0, 0);
                 this.Size = new Size(300, 450);
                 this.TopMost = false;
+                
+                // 状態をメニューに反映
+                this.fPS30ToolStripMenuItem.Checked = (setting.Fps == 30) ? true : false;
+                this.fPS24ToolStripMenuItem.Checked = (setting.Fps == 24) ? true : false;
+                this.stayOnTopToolStripMenuItem.Checked = setting.TopMost;
+                this.karacellNoMoveToolStripMenuItem.Checked = setting.IsKaraNoMove;
+                this.displayFrameNumberToolStripMenuItem.Checked = setting.IsDisplayFrameNumber;
+                this.div4ToolStripMenuItem.Checked = (setting.SheetDivide == 4) ? true : false;
+                this.div6ToolStripMenuItem.Checked = (setting.SheetDivide == 6) ? true : false;
+                this.div12ToolStripMenuItem.Checked = (setting.SheetDivide == 12) ? true : false;
+                this.autoAdjustToolStripMenuItem.Checked = setting.IsAutoadjust;
+                this.alwaysAppendToolStripMenuItem.Checked = setting.IsAlwaysAppend;
             }
             else
             {
@@ -489,6 +504,8 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        Control owner;                              //子ウィンドウ（ダイアログ）に与える自分のウィンドウハンドル
+        
         // 配色
         ColorDefinitions gridPalette = new ColorDefinitions();        //グリッド描画用 色設定
 
@@ -2417,12 +2434,6 @@ namespace AEIOU
                     }
                     break;
 
-                    {
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
                 case 106:   // '*'(10key)
                     // 選択範囲を拡大
                     {
@@ -3048,7 +3059,7 @@ namespace AEIOU
             Clipboard.SetText(Copytext);
 
             //AfterEffects側の呼び出し
-            Process.Start(setting.AfterPath, setting.AfterOption);
+            Process.Start(setting.AfterPath, "-r " + setting.AfterOption);
         }
 
         //----------------------------------------------------------------------------------------
@@ -3093,8 +3104,8 @@ namespace AEIOU
                 switch (setting.Fps)
                 {
                     case 24:
-                        this.fPS30ToolStripMenuItem.Checked = true;
-                        this.fPS24ToolStripMenuItem.Checked = false;
+                        this.fPS30ToolStripMenuItem.Checked = false;
+                        this.fPS24ToolStripMenuItem.Checked = true;
                         break;
                     case 30:
                         this.fPS30ToolStripMenuItem.Checked = true;
@@ -3417,7 +3428,7 @@ namespace AEIOU
             InputBox1 dialog = new InputBox1("開始フレーム数");
             dialog.LabelName1 = "開始フレーム数";
             dialog.Value1 = setting.FirstFrame.ToString();
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 try
                 {
@@ -3437,7 +3448,7 @@ namespace AEIOU
             InputBox1 dialog = new InputBox1("カラセル文字列");
             dialog.LabelName1 = "カラセル文字列";
             dialog.Value1 = setting.KaraCell;
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 setting.KaraCell = dialog.Value1;
             }
@@ -3450,7 +3461,7 @@ namespace AEIOU
             InputBox1 dialog = new InputBox1("シートの秒数");
             dialog.LabelName1 = "シートの秒数";
             dialog.Value1 = setting.SheetSec.ToString();
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 try
                 {
@@ -3512,7 +3523,7 @@ namespace AEIOU
             dialog.Multiselect = false;
 
             //ダイアログを表示する
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == DialogResult.OK)
             {
                 //OKボタンがクリックされた場合は、設定更新
                 setting.AfterPath = dialog.FileName;
@@ -3536,10 +3547,10 @@ namespace AEIOU
             dialog.Multiselect = false;
 
             //ダイアログを表示する
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == DialogResult.OK)
             {
                 //OKボタンがクリックされた場合は、設定更新
-                setting.AfterOption = "-r " + dialog.FileName;
+                setting.AfterOption = dialog.FileName;
             }
         }
 
@@ -3566,7 +3577,7 @@ namespace AEIOU
             int newCount = 0;
             dialog.LabelName1 = "セル枚数";
             dialog.Value1 = setting.ColLength.ToString();
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 try
                 {
@@ -3676,7 +3687,7 @@ namespace AEIOU
             dialog.CheckName1 = "番号を飛ばす";
             dialog.Value1 = "1";
             dialog.Value2 = "1";
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 int start = 1;
                 int step = 1;
@@ -3743,7 +3754,7 @@ namespace AEIOU
         {
             // 繰り返し
             RepeatInputBox dialog = new RepeatInputBox();
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 // 入力チェック
                 // (空白時は中止)
@@ -3885,7 +3896,7 @@ namespace AEIOU
             InputBox1 dialog = new InputBox1("置換");
             dialog.LabelName1 = "置換前";
             dialog.LabelName2 = "置換後";
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 // 入力チェック
                 // (空白時は中止)
@@ -4005,7 +4016,7 @@ namespace AEIOU
 
             InputBox1 dialog = new InputBox1("四則演算");
             dialog.LabelName1 = "四則演算";
-            if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
                 String val = dialog.Value1.Trim();
                 CalcMode mode = CalcMode.None;
@@ -4203,7 +4214,7 @@ namespace AEIOU
             dialog.CheckPathExists = true;
 
             //ダイアログを表示する
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == DialogResult.OK)
             {
                 //OKボタンがクリックされた場合は、保存実行
 
@@ -4380,7 +4391,7 @@ namespace AEIOU
             dialog.Multiselect = false;
 
             //ダイアログを表示する
-            if (dialog.ShowDialog() == DialogResult.OK)
+            if (dialog.ShowDialog(this.owner) == DialogResult.OK)
             {
                 //OKボタンがクリックされた場合は、読み込み実行
                 loadSTS(dialog.FileName);
