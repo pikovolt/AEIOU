@@ -44,6 +44,7 @@ namespace AEIOU
                                                     //afterfx オプション
         public RemapOutputMode AfterOutputMode = RemapOutputMode.AERemap;
                                                     //afterfx 出力モード
+        public String AfterRemapVersion = "9.0";    //コピー文字列に含まれるバージョン番号
 
         // ショートカット用定義
         public KeyBinds keys = new KeyBinds();
@@ -221,8 +222,10 @@ namespace AEIOU
             string Path = getInnerText("path", doc.SelectNodes("/document/pref/setting/afterFX/path"));
             string Option = getInnerText("option", doc.SelectNodes("/document/pref/setting/afterFX/option"));
             string Mode = getInnerText("outputMode", doc.SelectNodes("/document/pref/setting/afterFX/outputMode"));
+            string RemapVersion = getInnerText("remapVersion", doc.SelectNodes("/document/pref/setting/afterFX/remapVersion"));
             AfterPath = Path;
             AfterOption = Option;
+            AfterRemapVersion = RemapVersion;
             try
             {
                 switch(Mode)
@@ -357,12 +360,15 @@ namespace AEIOU
                         XmlElement afterPath = doc.CreateElement("path");
                         XmlElement option = doc.CreateElement("option");
                         XmlElement mode = doc.CreateElement("outputMode");
+                        XmlElement remapVersion = doc.CreateElement("remapVersion");
                         after.AppendChild(afterPath);
                         after.AppendChild(option);
                         after.AppendChild(mode);
+                        after.AppendChild(remapVersion);
                         afterPath.InnerText = AfterPath;
                         option.InnerText = AfterOption;
                         mode.InnerText = AfterOutputMode.ToString();
+                        remapVersion.InnerText = AfterRemapVersion;
                     }
                     XmlElement isAlwaysAppend = doc.CreateElement("isAlwaysAppend");
                     set.AppendChild(isAlwaysAppend);

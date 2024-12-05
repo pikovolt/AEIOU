@@ -1,10 +1,12 @@
 ﻿// AfterEffects Input/Output Utility v3.x  Programed by kanbara.
 //
-//  ■v3.0
+//  ■v3.1
 //  (24-11-19 6:00) v3.1.0.0
 //　　　・アンドゥ実装の書き換え
 //　　　　→リドゥ動作の追加
+//      ・タイミングコピー時のバージョン文字列を iniファイルに記録する動作の追加（.iniファイルは削除して、新しく作る必要あり）
 //
+//  ■v3.0
 //  (13-04-20 13:00) v3.0.0.3
 //　　　・設定ファイル読み込みのエラー処理が足りなかった部分を修正
 //　　　　→Settingsの読み込み時にエラー処理追加。
@@ -2691,7 +2693,7 @@ namespace AEIOU
             int col = dataGridView1.CurrentCell.ColumnIndex;
 
             //ヘッダ書き出し(定型文字列)
-            Copytext = "Adobe After Effects 4.0 Keyframe Data\r\n";
+            Copytext = "Adobe After Effects " + setting.AfterRemapVersion + " Keyframe Data\r\n";
             Copytext += "\r\n";
             Copytext += "\tUnits Per Second\t" + setting.Fps.ToString() + "\r\n";
             Copytext += "\tSource Width\t640\r\n";
