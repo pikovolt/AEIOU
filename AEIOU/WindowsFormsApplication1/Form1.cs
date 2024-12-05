@@ -2914,7 +2914,7 @@ namespace AEIOU
             int col = dataGridView1.CurrentCell.ColumnIndex;
 
             //ヘッダ書き出し(定型文字列)
-            Copytext = "Adobe After Effects 4.0 Keyframe Data\r\n";
+            Copytext = "Adobe After Effects " + setting.AfterRemapVersion + " Keyframe Data\r\n";
             Copytext += "\r\n";
             Copytext += "\tUnits Per Second\t" + setting.Fps.ToString() + "\r\n";
             Copytext += "\tSource Width\t640\r\n";
