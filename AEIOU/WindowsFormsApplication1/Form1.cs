@@ -6,6 +6,7 @@
 //　　　　→リドゥ動作の追加
 //      ・タイミングコピー時のバージョン文字列を iniファイルに記録する動作の追加（.iniファイルは削除して、新しく作る必要あり）
 //      ・起動時に、dataGridViewにフォーカスを当てる（起動時に、クリックしないとキー入力が効かないため）
+//      ・セルの列ヘッダクリックで、１列全選択する動作を追加（何故か付けてなかった..）
 //
 //  ■v3.0
 //  (13-04-20 13:00) v3.0.0.3
@@ -4064,6 +4065,24 @@ namespace AEIOU
             dataGridView1.Invalidate();
         }
 
+        //----------------------------------------------------------------------------------------
+        private void dataGridView1_ColumnHeaderMouseClick(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            // セル列のヘッダがクリックされた場合に、１列選択する（ダブルクリックが名称編集なので、クリックで全選択に）
+
+            // 選択をクリア
+            dataGridView1.ClearSelection();
+
+            // 選択した列の最初のセルに移動
+            dataGridView1.CurrentCell = dataGridView1[e.ColumnIndex, 0];
+
+            // 列全体を選択
+            for (int row = 0; row < dataGridView1.RowCount; row++)
+            {
+                dataGridView1[e.ColumnIndex, row].Selected = true;
+            }
+
+        }
     }
 
 }
