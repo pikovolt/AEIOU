@@ -11,11 +11,15 @@ namespace AEIOU
 {
     public partial class RepeatInputBox : Form
     {
+        // イベントデリゲートの定義
+        public delegate void RepeatInputEventHandler(object sender, EventArgs e);
+
+        // イベントの宣言
+        public event RepeatInputEventHandler OnRepeatInput;
         public RepeatInputBox()
         {
             InitializeComponent();
         }
-
         public String Value1
         {
             get { return textBox1.Text; }
@@ -39,6 +43,11 @@ namespace AEIOU
         public String Value6
         {
             get { return textBox6.Text; }
+        }
+        private void buttonRepeat_Click(object sender, EventArgs e)
+        {
+            // イベントを発火
+            OnRepeatInput?.Invoke(this, EventArgs.Empty);
         }
     }
 }

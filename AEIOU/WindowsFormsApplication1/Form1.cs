@@ -7,6 +7,8 @@
 //      ・タイミングコピー時のバージョン文字列を iniファイルに記録する動作の追加（.iniファイルは削除して、新しく作る必要あり）
 //      ・起動時に、dataGridViewにフォーカスを当てる（起動時に、クリックしないとキー入力が効かないため）
 //      ・セルの列ヘッダクリックで、１列全選択する動作を追加（何故か付けてなかった..）
+//      ・繰り返し操作のダイアログをモードレスに変更して、Okボタンを押す事に、Undoして繰り返し情報の入力。という動作に
+//        （単にUndoするもので、繰り返しの入力だけを狙ってUndoするわけではない点に注意）
 //
 //  ■v3.0
 //  (13-04-20 13:00) v3.0.0.3
@@ -303,6 +305,9 @@ namespace AEIOU
 
         // アンドゥ処理
         GridViewManager gridViewManager = new GridViewManager();
+
+        // 繰り返しダイアログ
+        private RepeatInputBox _repeatInputDialog;
 
         //----------------------------------------------------------------------------------------
         // コンストラクタ
@@ -3484,59 +3489,30 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
-        private void repeatNumberToolStripMenuItem_Click(object sender, EventArgs e)
+        private void HandleRepeatInput(object sender, EventArgs e)
         {
-            // 繰り返し
-            RepeatInputBox dialog = new RepeatInputBox();
-            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
-            {
-                // 入力チェック
-                // (空白時は中止)
-                if (dialog.Value1 == "")
-                { MessageBox.Show("開始番号がない."); return; }
-                if (dialog.Value2 == "")
-                { MessageBox.Show("終了番号がない."); return; }
-                if (dialog.Value3 == "")
-                { MessageBox.Show("コマ打ち数がない."); return; }
-                if (dialog.Value4 == "")
-                { MessageBox.Show("繰り返し数がない."); return; }
-                if (dialog.Value5 == "")
-                { MessageBox.Show("スキップ数がない."); return; }
-                try
-                {
-                    if (dialog.Value6.Length > 0)
-                    {
-                        int num = int.Parse(dialog.Value6);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("入力された値を数値に変換できませんでした."); return;
-                }
+            // 入力値を処理する
+            int start = int.Parse(((RepeatInputBox)sender).Value1);
+            int end = int.Parse(((RepeatInputBox)sender).Value2);
+            int step = int.Parse(((RepeatInputBox)sender).Value3);
+            int loop = int.Parse(((RepeatInputBox)sender).Value4);
+            int skip = int.Parse(((RepeatInputBox)sender).Value5) + 1;
+            string insert_str = ((RepeatInputBox)sender).Value6;
 
-                int count, start, end, step, loop, skip, insert;
-                try
-                {
-                    start = int.Parse(dialog.Value1);
-                    end = int.Parse(dialog.Value2);
-                    step = int.Parse(dialog.Value3);
-                    loop = int.Parse(dialog.Value4);
-                    skip = int.Parse(dialog.Value5) + 1;
-                    insert = 1;
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("入力された値を数値に変換できませんでした."); return;
-                }
+            // 操作前に Undo（繰り返し実行を前提に、１つ前の操作を取り消す）
+            gridViewManager.Undo();
+
+            // 入力値を使用して処理を行う
+            {
+                int count;
 
                 // 入力数: 開始#～終了#
                 // ※挿入番号がある場合、開始～終了番号と交互に入るので更に２倍
                 // ※スキップ数が有る場合、１／スキップ数に回数を減らす
                 // ※ループ回数は１回分の長さが決定したところで計算
                 count = end - start + 1;
-                if (dialog.Value6 != "")
+                if (insert_str != "")
                 {
-                    insert = 2;
                     count *= 2;
                 }
                 if (skip > 1)
@@ -3544,7 +3520,7 @@ namespace AEIOU
                     count /= skip;
                     count++;
                     //挿入番号があり、カウントが奇数の場合は偶数に補正
-                    if (insert > 1 && (count % 2) == 1)
+                    if (insert_str != "" && (count % 2) == 1)
                     {
                         count++;
                     }
@@ -3565,7 +3541,7 @@ namespace AEIOU
                     for (int i = 0; i < count; i++)
                     {
 
-                        if (insert == 1)
+                        if (insert_str == "")
                         {
                             //挿入番号なし
                             var operation = new SetValueOperation(row + (i * step), col, num.ToString());
@@ -3591,7 +3567,7 @@ namespace AEIOU
                         else
                         {
                             //挿入番号あり（挿入＃）
-                            var operation = new SetValueOperation(row + (i * step), col, dialog.Value6);
+                            var operation = new SetValueOperation(row + (i * step), col, insert_str);
                             gridViewManager.ExecuteOperation(operation);
 
                             aryCellUsedCount[col]++;
@@ -3607,6 +3583,21 @@ namespace AEIOU
                 // 描画更新(継続記号の更新の為)
                 dataGridView1.Invalidate();
             }
+        }
+
+        //----------------------------------------------------------------------------------------
+        private void repeatNumberToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            // 操作を１つ入れる (カレントセルの値を同じ場所に上書き)
+            var col = selectRange.Left;
+            var row = selectRange.Top;
+            var operation = new SetValueOperation(row, col, dataGridView1[col, row].Value.ToString());
+            gridViewManager.ExecuteOperation(operation);
+
+            // 繰り返しダイアログの表示
+            _repeatInputDialog = new RepeatInputBox();
+            _repeatInputDialog.OnRepeatInput += HandleRepeatInput;
+            _repeatInputDialog.Show();
         }
 
         //----------------------------------------------------------------------------------------
@@ -4081,7 +4072,6 @@ namespace AEIOU
             {
                 dataGridView1[e.ColumnIndex, row].Selected = true;
             }
-
         }
     }
 
