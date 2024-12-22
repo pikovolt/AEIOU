@@ -80,12 +80,12 @@
             this.stayOnTopToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.autoAdjustToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.displayFrameNumberToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.alwaysAppendToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.afterFXPathToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.afterFXOptionToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.toolStripMenuItem3 = new System.Windows.Forms.ToolStripSeparator();
             this.allInitializeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.textBox1 = new System.Windows.Forms.TextBox();
-            this.alwaysAppendToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).BeginInit();
             this.contextMenuStrip1.SuspendLayout();
             this.SuspendLayout();
@@ -164,7 +164,7 @@
             this.toolStripMenuItem3,
             this.allInitializeToolStripMenuItem});
             this.contextMenuStrip1.Name = "contextMenuStrip1";
-            this.contextMenuStrip1.Size = new System.Drawing.Size(209, 402);
+            this.contextMenuStrip1.Size = new System.Drawing.Size(182, 380);
             // 
             // editToolStripMenuItem
             // 
@@ -175,7 +175,7 @@
             this.cutToolStripMenuItem,
             this.pasteToolStripMenuItem});
             this.editToolStripMenuItem.Name = "editToolStripMenuItem";
-            this.editToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.editToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.editToolStripMenuItem.Text = "編集コマンド";
             // 
             // undoToolStripMenuItem
@@ -183,20 +183,20 @@
             this.undoToolStripMenuItem.Enabled = false;
             this.undoToolStripMenuItem.Name = "undoToolStripMenuItem";
             this.undoToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Z)));
-            this.undoToolStripMenuItem.Size = new System.Drawing.Size(171, 22);
+            this.undoToolStripMenuItem.Size = new System.Drawing.Size(157, 22);
             this.undoToolStripMenuItem.Text = "元に戻す";
             this.undoToolStripMenuItem.Click += new System.EventHandler(this.undoToolStripMenuItem_Click);
             // 
             // toolStripMenuItem1
             // 
             this.toolStripMenuItem1.Name = "toolStripMenuItem1";
-            this.toolStripMenuItem1.Size = new System.Drawing.Size(168, 6);
+            this.toolStripMenuItem1.Size = new System.Drawing.Size(154, 6);
             // 
             // copyToolStripMenuItem
             // 
             this.copyToolStripMenuItem.Name = "copyToolStripMenuItem";
             this.copyToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.C)));
-            this.copyToolStripMenuItem.Size = new System.Drawing.Size(171, 22);
+            this.copyToolStripMenuItem.Size = new System.Drawing.Size(157, 22);
             this.copyToolStripMenuItem.Text = "コピー";
             this.copyToolStripMenuItem.Click += new System.EventHandler(this.copyToolStripMenuItem_Click);
             // 
@@ -204,7 +204,7 @@
             // 
             this.cutToolStripMenuItem.Name = "cutToolStripMenuItem";
             this.cutToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.X)));
-            this.cutToolStripMenuItem.Size = new System.Drawing.Size(171, 22);
+            this.cutToolStripMenuItem.Size = new System.Drawing.Size(157, 22);
             this.cutToolStripMenuItem.Text = "切り取り";
             this.cutToolStripMenuItem.Click += new System.EventHandler(this.cutToolStripMenuItem_Click);
             // 
@@ -212,7 +212,7 @@
             // 
             this.pasteToolStripMenuItem.Name = "pasteToolStripMenuItem";
             this.pasteToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.V)));
-            this.pasteToolStripMenuItem.Size = new System.Drawing.Size(171, 22);
+            this.pasteToolStripMenuItem.Size = new System.Drawing.Size(157, 22);
             this.pasteToolStripMenuItem.Text = "貼り付け";
             this.pasteToolStripMenuItem.Click += new System.EventHandler(this.pasteToolStripMenuItem_Click);
             // 
@@ -227,14 +227,14 @@
             this.saveSTSToolStripMenuItem,
             this.loadSTSToolStripMenuItem});
             this.testToolStripMenuItem.Name = "testToolStripMenuItem";
-            this.testToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.testToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.testToolStripMenuItem.Text = "AE関連コマンド";
             // 
             // aECopyToolStripMenuItem
             // 
             this.aECopyToolStripMenuItem.Name = "aECopyToolStripMenuItem";
             this.aECopyToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.O)));
-            this.aECopyToolStripMenuItem.Size = new System.Drawing.Size(329, 22);
+            this.aECopyToolStripMenuItem.Size = new System.Drawing.Size(290, 22);
             this.aECopyToolStripMenuItem.Text = "AEへコピー";
             this.aECopyToolStripMenuItem.Click += new System.EventHandler(this.AECopyToolStripMenuItem_Click);
             // 
@@ -243,7 +243,7 @@
             this.directRemapToolStripMenuItem.Name = "directRemapToolStripMenuItem";
             this.directRemapToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)(((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.Shift) 
             | System.Windows.Forms.Keys.O)));
-            this.directRemapToolStripMenuItem.Size = new System.Drawing.Size(329, 22);
+            this.directRemapToolStripMenuItem.Size = new System.Drawing.Size(290, 22);
             this.directRemapToolStripMenuItem.Text = "AEへコピー(TimeRemap以外)";
             this.directRemapToolStripMenuItem.Click += new System.EventHandler(this.directRemapToolStripMenuItem_Click);
             // 
@@ -251,7 +251,7 @@
             // 
             this.jSRemapToolStripMenuItem.Name = "jSRemapToolStripMenuItem";
             this.jSRemapToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.P)));
-            this.jSRemapToolStripMenuItem.Size = new System.Drawing.Size(329, 22);
+            this.jSRemapToolStripMenuItem.Size = new System.Drawing.Size(290, 22);
             this.jSRemapToolStripMenuItem.Text = "AEへコピー(Script仲介)";
             this.jSRemapToolStripMenuItem.Click += new System.EventHandler(this.jSRemapToolStripMenuItem_Click);
             // 
@@ -259,113 +259,113 @@
             // 
             this.pasteFromAEToolStripMenuItem.Name = "pasteFromAEToolStripMenuItem";
             this.pasteFromAEToolStripMenuItem.ShortcutKeys = ((System.Windows.Forms.Keys)((System.Windows.Forms.Keys.Control | System.Windows.Forms.Keys.I)));
-            this.pasteFromAEToolStripMenuItem.Size = new System.Drawing.Size(329, 22);
+            this.pasteFromAEToolStripMenuItem.Size = new System.Drawing.Size(290, 22);
             this.pasteFromAEToolStripMenuItem.Text = "AEからペースト";
             this.pasteFromAEToolStripMenuItem.Click += new System.EventHandler(this.pasteFromAEToolStripMenuItem_Click);
             // 
             // toolStripMenuItem5
             // 
             this.toolStripMenuItem5.Name = "toolStripMenuItem5";
-            this.toolStripMenuItem5.Size = new System.Drawing.Size(326, 6);
+            this.toolStripMenuItem5.Size = new System.Drawing.Size(287, 6);
             // 
             // saveSTSToolStripMenuItem
             // 
             this.saveSTSToolStripMenuItem.Name = "saveSTSToolStripMenuItem";
-            this.saveSTSToolStripMenuItem.Size = new System.Drawing.Size(329, 22);
+            this.saveSTSToolStripMenuItem.Size = new System.Drawing.Size(290, 22);
             this.saveSTSToolStripMenuItem.Text = "全セル保存(STS)...";
             this.saveSTSToolStripMenuItem.Click += new System.EventHandler(this.saveSTSToolStripMenuItem_Click);
             // 
             // loadSTSToolStripMenuItem
             // 
             this.loadSTSToolStripMenuItem.Name = "loadSTSToolStripMenuItem";
-            this.loadSTSToolStripMenuItem.Size = new System.Drawing.Size(329, 22);
+            this.loadSTSToolStripMenuItem.Size = new System.Drawing.Size(290, 22);
             this.loadSTSToolStripMenuItem.Text = "全セル読込(STS)...";
             this.loadSTSToolStripMenuItem.Click += new System.EventHandler(this.loadSTSToolStripMenuItem_Click);
             // 
             // toolStripSeparator1
             // 
             this.toolStripSeparator1.Name = "toolStripSeparator1";
-            this.toolStripSeparator1.Size = new System.Drawing.Size(205, 6);
+            this.toolStripSeparator1.Size = new System.Drawing.Size(178, 6);
             // 
             // setNakanukiToolStripMenuItem
             // 
             this.setNakanukiToolStripMenuItem.Name = "setNakanukiToolStripMenuItem";
-            this.setNakanukiToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.setNakanukiToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.setNakanukiToolStripMenuItem.Text = "中抜きフレームに設定";
             this.setNakanukiToolStripMenuItem.Click += new System.EventHandler(this.setNakanukiToolStripMenuItem_Click);
             // 
             // cancelNakanukiToolStripMenuItem
             // 
             this.cancelNakanukiToolStripMenuItem.Name = "cancelNakanukiToolStripMenuItem";
-            this.cancelNakanukiToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.cancelNakanukiToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.cancelNakanukiToolStripMenuItem.Text = "中抜き設定の解除";
             this.cancelNakanukiToolStripMenuItem.Click += new System.EventHandler(this.cancelNakanukiToolStripMenuItem_Click);
             // 
             // setKiribariToolStripMenuItem
             // 
             this.setKiribariToolStripMenuItem.Name = "setKiribariToolStripMenuItem";
-            this.setKiribariToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.setKiribariToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.setKiribariToolStripMenuItem.Text = "切り貼りフレームに設定";
             this.setKiribariToolStripMenuItem.Click += new System.EventHandler(this.setKiribariToolStripMenuItem_Click);
             // 
             // cancelKiribariToolStripMenuItem
             // 
             this.cancelKiribariToolStripMenuItem.Name = "cancelKiribariToolStripMenuItem";
-            this.cancelKiribariToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.cancelKiribariToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.cancelKiribariToolStripMenuItem.Text = "切り貼り設定の解除";
             this.cancelKiribariToolStripMenuItem.Click += new System.EventHandler(this.cancelKiribariToolStripMenuItem_Click);
             // 
             // toolStripMenuItem4
             // 
             this.toolStripMenuItem4.Name = "toolStripMenuItem4";
-            this.toolStripMenuItem4.Size = new System.Drawing.Size(205, 6);
+            this.toolStripMenuItem4.Size = new System.Drawing.Size(178, 6);
             // 
             // repeatNumberToolStripMenuItem
             // 
             this.repeatNumberToolStripMenuItem.Name = "repeatNumberToolStripMenuItem";
-            this.repeatNumberToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.repeatNumberToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.repeatNumberToolStripMenuItem.Text = "繰り返し...";
             this.repeatNumberToolStripMenuItem.Click += new System.EventHandler(this.repeatNumberToolStripMenuItem_Click);
             // 
             // sequentialNumberToolStripMenuItem
             // 
             this.sequentialNumberToolStripMenuItem.Name = "sequentialNumberToolStripMenuItem";
-            this.sequentialNumberToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.sequentialNumberToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.sequentialNumberToolStripMenuItem.Text = "連番作成...";
             this.sequentialNumberToolStripMenuItem.Click += new System.EventHandler(this.sequentialNumberToolStripMenuItem_Click);
             // 
             // replaceToolStripMenuItem
             // 
             this.replaceToolStripMenuItem.Name = "replaceToolStripMenuItem";
-            this.replaceToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.replaceToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.replaceToolStripMenuItem.Text = "置換...";
             this.replaceToolStripMenuItem.Click += new System.EventHandler(this.replaceToolStripMenuItem_Click);
             // 
             // reverseToolStripMenuItem
             // 
             this.reverseToolStripMenuItem.Name = "reverseToolStripMenuItem";
-            this.reverseToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.reverseToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.reverseToolStripMenuItem.Text = "反転";
             this.reverseToolStripMenuItem.Click += new System.EventHandler(this.reverseToolStripMenuItem_Click);
             // 
             // duplicateToolStripMenuItem
             // 
             this.duplicateToolStripMenuItem.Name = "duplicateToolStripMenuItem";
-            this.duplicateToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.duplicateToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.duplicateToolStripMenuItem.Text = "複製";
             this.duplicateToolStripMenuItem.Click += new System.EventHandler(this.duplicateToolStripMenuItem_Click);
             // 
             // fourArithmeticOperationToolStripMenuItem
             // 
             this.fourArithmeticOperationToolStripMenuItem.Name = "fourArithmeticOperationToolStripMenuItem";
-            this.fourArithmeticOperationToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.fourArithmeticOperationToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.fourArithmeticOperationToolStripMenuItem.Text = "四則演算...";
             this.fourArithmeticOperationToolStripMenuItem.Click += new System.EventHandler(this.fourArithmeticOperationToolStripMenuItem_Click);
             // 
             // toolStripMenuItem2
             // 
             this.toolStripMenuItem2.Name = "toolStripMenuItem2";
-            this.toolStripMenuItem2.Size = new System.Drawing.Size(205, 6);
+            this.toolStripMenuItem2.Size = new System.Drawing.Size(178, 6);
             // 
             // changeFpsToolStripMenuItem
             // 
@@ -373,20 +373,20 @@
             this.fPS30ToolStripMenuItem,
             this.fPS24ToolStripMenuItem});
             this.changeFpsToolStripMenuItem.Name = "changeFpsToolStripMenuItem";
-            this.changeFpsToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.changeFpsToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.changeFpsToolStripMenuItem.Text = "FPS変更";
             // 
             // fPS30ToolStripMenuItem
             // 
             this.fPS30ToolStripMenuItem.Name = "fPS30ToolStripMenuItem";
-            this.fPS30ToolStripMenuItem.Size = new System.Drawing.Size(152, 22);
+            this.fPS30ToolStripMenuItem.Size = new System.Drawing.Size(86, 22);
             this.fPS30ToolStripMenuItem.Text = "30";
             this.fPS30ToolStripMenuItem.Click += new System.EventHandler(this.fPS30ToolStripMenuItem_Click);
             // 
             // fPS24ToolStripMenuItem
             // 
             this.fPS24ToolStripMenuItem.Name = "fPS24ToolStripMenuItem";
-            this.fPS24ToolStripMenuItem.Size = new System.Drawing.Size(152, 22);
+            this.fPS24ToolStripMenuItem.Size = new System.Drawing.Size(86, 22);
             this.fPS24ToolStripMenuItem.Text = "24";
             this.fPS24ToolStripMenuItem.Click += new System.EventHandler(this.fPS24ToolStripMenuItem_Click);
             // 
@@ -397,27 +397,27 @@
             this.insertCellToolStripMenuItem,
             this.deleteCellToolStripMenuItem});
             this.cellToolStripMenuItem.Name = "cellToolStripMenuItem";
-            this.cellToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.cellToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.cellToolStripMenuItem.Text = "セル操作";
             // 
             // inputCellCountToolStripMenuItem
             // 
             this.inputCellCountToolStripMenuItem.Name = "inputCellCountToolStripMenuItem";
-            this.inputCellCountToolStripMenuItem.Size = new System.Drawing.Size(172, 22);
+            this.inputCellCountToolStripMenuItem.Size = new System.Drawing.Size(161, 22);
             this.inputCellCountToolStripMenuItem.Text = "セル枚数の指定...";
             this.inputCellCountToolStripMenuItem.Click += new System.EventHandler(this.inputCellCountToolStripMenuItem_Click);
             // 
             // insertCellToolStripMenuItem
             // 
             this.insertCellToolStripMenuItem.Name = "insertCellToolStripMenuItem";
-            this.insertCellToolStripMenuItem.Size = new System.Drawing.Size(172, 22);
+            this.insertCellToolStripMenuItem.Size = new System.Drawing.Size(161, 22);
             this.insertCellToolStripMenuItem.Text = "セルの挿入";
             this.insertCellToolStripMenuItem.Click += new System.EventHandler(this.insertCellToolStripMenuItem_Click);
             // 
             // deleteCellToolStripMenuItem
             // 
             this.deleteCellToolStripMenuItem.Name = "deleteCellToolStripMenuItem";
-            this.deleteCellToolStripMenuItem.Size = new System.Drawing.Size(172, 22);
+            this.deleteCellToolStripMenuItem.Size = new System.Drawing.Size(161, 22);
             this.deleteCellToolStripMenuItem.Text = "セルの削除";
             this.deleteCellToolStripMenuItem.Click += new System.EventHandler(this.deleteCellToolStripMenuItem_Click);
             // 
@@ -436,34 +436,34 @@
             this.afterFXPathToolStripMenuItem,
             this.afterFXOptionToolStripMenuItem});
             this.optionToolStripMenuItem.Name = "optionToolStripMenuItem";
-            this.optionToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.optionToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.optionToolStripMenuItem.Text = "オプション";
             // 
             // firstFrameToolStripMenuItem
             // 
             this.firstFrameToolStripMenuItem.Name = "firstFrameToolStripMenuItem";
-            this.firstFrameToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.firstFrameToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.firstFrameToolStripMenuItem.Text = "開始フレーム...";
             this.firstFrameToolStripMenuItem.Click += new System.EventHandler(this.firstFrameToolStripMenuItem_Click);
             // 
             // karacellValueToolStripMenuItem
             // 
             this.karacellValueToolStripMenuItem.Name = "karacellValueToolStripMenuItem";
-            this.karacellValueToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.karacellValueToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.karacellValueToolStripMenuItem.Text = "カラセル文字列...";
             this.karacellValueToolStripMenuItem.Click += new System.EventHandler(this.karacellValueToolStripMenuItem_Click);
             // 
             // karacellNoMoveToolStripMenuItem
             // 
             this.karacellNoMoveToolStripMenuItem.Name = "karacellNoMoveToolStripMenuItem";
-            this.karacellNoMoveToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.karacellNoMoveToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.karacellNoMoveToolStripMenuItem.Text = "カラセル入力時の移動抑止";
             this.karacellNoMoveToolStripMenuItem.Click += new System.EventHandler(this.karacellNoMoveToolStripMenuItem_Click);
             // 
             // secondsPerSheetToolStripMenuItem
             // 
             this.secondsPerSheetToolStripMenuItem.Name = "secondsPerSheetToolStripMenuItem";
-            this.secondsPerSheetToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.secondsPerSheetToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.secondsPerSheetToolStripMenuItem.Text = "シートの秒数...";
             this.secondsPerSheetToolStripMenuItem.Click += new System.EventHandler(this.secondsPerSheetToolStripMenuItem_Click);
             // 
@@ -474,74 +474,81 @@
             this.div6ToolStripMenuItem,
             this.div12ToolStripMenuItem});
             this.sheetDividerToolStripMenuItem.Name = "sheetDividerToolStripMenuItem";
-            this.sheetDividerToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.sheetDividerToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.sheetDividerToolStripMenuItem.Text = "24fps時の基準線指定";
             // 
             // div4ToolStripMenuItem
             // 
             this.div4ToolStripMenuItem.Name = "div4ToolStripMenuItem";
-            this.div4ToolStripMenuItem.Size = new System.Drawing.Size(90, 22);
+            this.div4ToolStripMenuItem.Size = new System.Drawing.Size(86, 22);
             this.div4ToolStripMenuItem.Text = "4";
             this.div4ToolStripMenuItem.Click += new System.EventHandler(this.div4ToolStripMenuItem_Click);
             // 
             // div6ToolStripMenuItem
             // 
             this.div6ToolStripMenuItem.Name = "div6ToolStripMenuItem";
-            this.div6ToolStripMenuItem.Size = new System.Drawing.Size(90, 22);
+            this.div6ToolStripMenuItem.Size = new System.Drawing.Size(86, 22);
             this.div6ToolStripMenuItem.Text = "6";
             this.div6ToolStripMenuItem.Click += new System.EventHandler(this.div6ToolStripMenuItem_Click);
             // 
             // div12ToolStripMenuItem
             // 
             this.div12ToolStripMenuItem.Name = "div12ToolStripMenuItem";
-            this.div12ToolStripMenuItem.Size = new System.Drawing.Size(90, 22);
+            this.div12ToolStripMenuItem.Size = new System.Drawing.Size(86, 22);
             this.div12ToolStripMenuItem.Text = "12";
             this.div12ToolStripMenuItem.Click += new System.EventHandler(this.div12ToolStripMenuItem_Click);
             // 
             // stayOnTopToolStripMenuItem
             // 
             this.stayOnTopToolStripMenuItem.Name = "stayOnTopToolStripMenuItem";
-            this.stayOnTopToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.stayOnTopToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.stayOnTopToolStripMenuItem.Text = "常に一番上に表示";
             this.stayOnTopToolStripMenuItem.Click += new System.EventHandler(this.stayOnTopToolStripMenuItem_Click);
             // 
             // autoAdjustToolStripMenuItem
             // 
             this.autoAdjustToolStripMenuItem.Name = "autoAdjustToolStripMenuItem";
-            this.autoAdjustToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.autoAdjustToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.autoAdjustToolStripMenuItem.Text = "セル変更時にウィンドウ位置調整する";
             this.autoAdjustToolStripMenuItem.Click += new System.EventHandler(this.autoAdjustToolStripMenuItem_Click);
             // 
             // displayFrameNumberToolStripMenuItem
             // 
             this.displayFrameNumberToolStripMenuItem.Name = "displayFrameNumberToolStripMenuItem";
-            this.displayFrameNumberToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.displayFrameNumberToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.displayFrameNumberToolStripMenuItem.Text = "フレーム数表示に";
             this.displayFrameNumberToolStripMenuItem.Click += new System.EventHandler(this.displayFrameNumberToolStripMenuItem_Click);
+            // 
+            // alwaysAppendToolStripMenuItem
+            // 
+            this.alwaysAppendToolStripMenuItem.CheckOnClick = true;
+            this.alwaysAppendToolStripMenuItem.Name = "alwaysAppendToolStripMenuItem";
+            this.alwaysAppendToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
+            this.alwaysAppendToolStripMenuItem.Text = "セル入力を\"常に追加\"に設定";
             // 
             // afterFXPathToolStripMenuItem
             // 
             this.afterFXPathToolStripMenuItem.Name = "afterFXPathToolStripMenuItem";
-            this.afterFXPathToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.afterFXPathToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.afterFXPathToolStripMenuItem.Text = "AfterFX.exe パス設定...";
             this.afterFXPathToolStripMenuItem.Click += new System.EventHandler(this.afterFXPathToolStripMenuItem_Click);
             // 
             // afterFXOptionToolStripMenuItem
             // 
             this.afterFXOptionToolStripMenuItem.Name = "afterFXOptionToolStripMenuItem";
-            this.afterFXOptionToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
+            this.afterFXOptionToolStripMenuItem.Size = new System.Drawing.Size(248, 22);
             this.afterFXOptionToolStripMenuItem.Text = "リマップ用jsx パス設定...";
             this.afterFXOptionToolStripMenuItem.Click += new System.EventHandler(this.afterFXOptionToolStripMenuItem_Click);
             // 
             // toolStripMenuItem3
             // 
             this.toolStripMenuItem3.Name = "toolStripMenuItem3";
-            this.toolStripMenuItem3.Size = new System.Drawing.Size(205, 6);
+            this.toolStripMenuItem3.Size = new System.Drawing.Size(178, 6);
             // 
             // allInitializeToolStripMenuItem
             // 
             this.allInitializeToolStripMenuItem.Name = "allInitializeToolStripMenuItem";
-            this.allInitializeToolStripMenuItem.Size = new System.Drawing.Size(208, 22);
+            this.allInitializeToolStripMenuItem.Size = new System.Drawing.Size(181, 22);
             this.allInitializeToolStripMenuItem.Text = "クリア";
             this.allInitializeToolStripMenuItem.Click += new System.EventHandler(this.allInitializeToolStripMenuItem_Click);
             // 
@@ -555,13 +562,6 @@
             this.textBox1.KeyDown += new System.Windows.Forms.KeyEventHandler(this.TextBox_KeyDown);
             this.textBox1.Leave += new System.EventHandler(this.TextBox_Leave);
             // 
-            // alwaysAppendToolStripMenuItem
-            // 
-            this.alwaysAppendToolStripMenuItem.CheckOnClick = true;
-            this.alwaysAppendToolStripMenuItem.Name = "alwaysAppendToolStripMenuItem";
-            this.alwaysAppendToolStripMenuItem.Size = new System.Drawing.Size(280, 22);
-            this.alwaysAppendToolStripMenuItem.Text = "セル入力を\"常に追加\"に設定";
-            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 12F);
@@ -573,6 +573,7 @@
             this.Name = "Form1";
             this.Text = "AEIOU";
             this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
+            this.Shown += new System.EventHandler(this.Form1_Shown);
             ((System.ComponentModel.ISupportInitialize)(this.dataGridView1)).EndInit();
             this.contextMenuStrip1.ResumeLayout(false);
             this.ResumeLayout(false);

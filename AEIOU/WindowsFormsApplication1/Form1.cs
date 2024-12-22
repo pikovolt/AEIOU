@@ -268,6 +268,8 @@ using System.IO;
 using System.Xml;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace AEIOU
 {
@@ -2910,6 +2912,38 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        private void SetClipboardTextWithRetry(string text, int maxRetries = 5, int delayMs = 100)
+        {
+            for (int i = 0; i < maxRetries; i++)
+            {
+                try
+                {
+                    Clipboard.SetText(text);
+                    return;
+                }
+                catch (ExternalException)
+                {
+                    if (i == maxRetries - 1) throw; // 最後のリトライで失敗した場合、例外を再スロー
+                    Thread.Sleep(delayMs);
+                }
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
+        private bool IsClipboardAvailable()
+        {
+            try
+            {
+                Clipboard.GetDataObject();
+                return true;
+            }
+            catch (ExternalException)
+            {
+                return false;
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
         private void AECopy(bool isDirect)
         {
             // AEへコピー
@@ -2981,7 +3015,11 @@ namespace AEIOU
             Copytext += "End of Keyframe Data\r\n";
 
             //クリップボードに反映
-            Clipboard.SetText(Copytext);
+            SetClipboardTextWithRetry(Copytext);
+            if (!IsClipboardAvailable())
+            {
+                MessageBox.Show("クリップボードにアクセスできません。");
+            }
         }
 
         //----------------------------------------------------------------------------------------
@@ -3062,7 +3100,11 @@ namespace AEIOU
             Copytext += "]}";
 
             //クリップボードに反映
-            Clipboard.SetText(Copytext);
+            SetClipboardTextWithRetry(Copytext);
+            if (!IsClipboardAvailable())
+            {
+                MessageBox.Show("クリップボードにアクセスできません。");
+            }
 
             //AfterEffects側の呼び出し
             Process.Start(setting.AfterPath, "-r " + setting.AfterOption);
@@ -4408,6 +4450,12 @@ namespace AEIOU
             dataGridView1.Invalidate();
         }
 
+        //----------------------------------------------------------------------------------------
+        private void Form1_Shown(object sender, EventArgs e)
+        {
+            //コントロールにフォーカスを設定
+            dataGridView1.Focus();
+        }
     }
 
 }
