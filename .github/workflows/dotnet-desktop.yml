@@ -37,4 +37,4 @@ jobs:
         path: release-build
 
     - name: Clean up temporary directory
-      run: rm -rf temp-build
+      run: Remove-Item -Recurse -Force temp-build # rm -rf temp-build を Remove-Item に変更
