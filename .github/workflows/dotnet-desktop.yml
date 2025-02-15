@@ -33,7 +33,7 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v4 # v3 から v4 に変更
       with:
-        name: AEIOU-x64-Release-$datetime
+        name: AEIOU-x64-Release-${{ env.datetime }} # $datetime を ${{ env.datetime }} に変更
         path: release-build
 
     - name: Clean up temporary directory
