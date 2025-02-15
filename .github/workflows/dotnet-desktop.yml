@@ -28,7 +28,7 @@ jobs:
     - name: Zip Executable
       run: |
         $datetime = Get-Date -Format "yyyyMMdd-HHmm"
-        7z a release-build\AEIOU-$datetime.zip temp-build\AEIOU.exe
+        7z a release-build\AEIOU-$datetime.zip D:\a\temp-build\AEIOU.exe  # パスを修正
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4 # v3 から v4 に変更
