@@ -20,7 +20,7 @@ jobs:
       run: mkdir temp-build
 
     - name: Build solution in temporary directory
-      run: msbuild AEIOU/AEIOU.sln /p:Configuration=Release /p:Platform=x64 /p:OutDir=temp-build # パスを修正
+      run: msbuild AEIOU/AEIOU.sln /p:Configuration=Release /p:Platform=x64 /p:OutDir=D:\a\temp-build # 出力先ディレクトリを絶対パスで指定
 
     - name: Create Output Directory
       run: mkdir release-build
