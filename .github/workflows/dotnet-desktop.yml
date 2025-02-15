@@ -1,0 +1,40 @@
+name: AEIOU-master-x64-Release-Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Restore NuGet packages
+      run: nuget restore AEIOU/AEIOU.sln # パスを修正
+
+    - name: Create temporary directory
+      run: mkdir temp-build
+
+    - name: Build solution in temporary directory
+      run: msbuild AEIOU/AEIOU.sln /p:Configuration=Release /p:Platform=x64 /p:OutDir=temp-build # パスを修正
+
+    - name: Create Output Directory
+      run: mkdir release-build
+
+    - name: Zip Executable
+      run: |
+        $datetime = Get-Date -Format "yyyyMMdd-HHmm"
+        7z a release-build\AEIOU-$datetime.zip temp-build\AEIOU.exe
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: AEIOU-x64-Release-$datetime
+        path: release-build
+
+    - name: Clean up temporary directory
+      run: rm -rf temp-build
