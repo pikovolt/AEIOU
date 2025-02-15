@@ -8,20 +8,6 @@ jobs:
     runs-on: windows-latest
 
     steps:
-
-    - name: Set datetime
-      run: |
-        $datetime = Get-Date -Format "yyyyMMdd-HHmm"
-        echo "datetime=$datetime" | Out-File -Encoding utf8 .env # .envファイルを新規作成し、環境変数を書き込む
-
-    - name: Use datetime
-      shell: powershell
-      run: |
-        Get-Content .env | ForEach-Object {
-          $_.Split("=") | ForEach-Object { $key = $_[0]; $value = $_[1]; Set-Variable -Name $key -Value $value } # .envファイルを読み込み、環境変数を設定
-        }
-        Write-Host $datetime # datetime環境変数を出力
-
     - uses: actions/checkout@v3
 
     - name: Setup MSBuild
@@ -47,7 +33,7 @@ jobs:
     - name: Upload Artifact
       uses: actions/upload-artifact@v4 # v3 から v4 に変更
       with:
-        name: AEIOU-x64-Release-${{ env.datetime }} # $datetime を ${{ env.datetime }} に変更
+        name: AEIOU-x64-Release
         path: release-build
 
     - name: Clean up temporary directory
