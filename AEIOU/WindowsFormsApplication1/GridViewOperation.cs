@@ -21,7 +21,6 @@ namespace AEIOU
         public abstract void Undo(GridViewManager manager);
         public abstract void Redo(GridViewManager manager);
 
-        // ここに DataGridViewの実装を書くのは変か..
         public void CopyToBuffer(Rect range, GridViewManager manager)
         {
             manager.CopyRect = range;
@@ -34,20 +33,29 @@ namespace AEIOU
                 }
             }
         }
+
         public void PasteFromBuffer(int row, int col, GridViewManager manager)
         {
             if (manager.CopyBuffer != null)
             {
                 Rect copyRect = manager.CopyRect;
-                for (int i = 0; i < Math.Min(copyRect.Height, manager.CopyBuffer.GetLength(0)); i++)
+                int maxHeight = Math.Min(copyRect.Height, manager.View.RowCount - row);
+                int maxWidth = Math.Min(copyRect.Width, manager.View.ColumnCount - col);
+
+                for (int i = 0; i < maxHeight; i++)
                 {
-                    for (int j = 0; j < Math.Min(copyRect.Width, manager.CopyBuffer.GetLength(1)); j++)
+                    for (int j = 0; j < maxWidth; j++)
                     {
-                        manager.View[col + j, row + i].Value = manager.CopyBuffer[i, j];
+                        // 範囲外の処理はしない
+                        if (i < manager.CopyBuffer.GetLength(0) && j < manager.CopyBuffer.GetLength(1))
+                        {
+                            manager.View[col + j, row + i].Value = manager.CopyBuffer[i, j];
+                        }
                     }
                 }
             }
         }
+
         public void ClearSelection(Rect range, GridViewManager manager)
         {
             for (int i = 0; i < range.Height; i++)
@@ -135,11 +143,15 @@ namespace AEIOU
         {
             if (manager.CopyBuffer != null)
             {
+                // 範囲外の処理はしないよう、コピー範囲を計算
                 Rect copyRect = manager.CopyRect;
-                _oldValues = new String[copyRect.Height, copyRect.Width];
-                for (int i = 0; i < copyRect.Height; i++)
+                int maxHeight = Math.Min(copyRect.Height, manager.View.RowCount - _row);
+                int maxWidth = Math.Min(copyRect.Width, manager.View.ColumnCount - _col);
+                _oldValues = new String[maxHeight, maxWidth];
+
+                for (int i = 0; i < maxHeight; i++)
                 {
-                    for (int j = 0; j < copyRect.Width; j++)
+                    for (int j = 0; j < maxWidth; j++)
                     {
                         _oldValues[i, j] = manager.View[_col + j, _row + i].Value.ToString();
                     }
