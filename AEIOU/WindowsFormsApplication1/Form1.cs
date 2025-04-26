@@ -391,7 +391,7 @@ namespace AEIOU
                 this.cutToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.Cut);
                 this.pasteToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.Paste);
                 this.fPS30ToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.Set30FPS);
-                this.fPS30ToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.Set24FPS);
+                this.fPS24ToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.Set24FPS);
                 this.inputCellCountToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.InputCellCount);
                 this.firstFrameToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.InputFirstFrame);
                 this.karacellValueToolStripMenuItem.ShortcutKeys = (Keys)Enum.Parse(typeof(Keys), setting.keys.InputKaraCellValue);
