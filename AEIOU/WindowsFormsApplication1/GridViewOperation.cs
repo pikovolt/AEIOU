@@ -38,23 +38,25 @@ namespace AEIOU
         {
             if (manager.CopyBuffer != null)
             {
-                Rect copyRect = manager.CopyRect;
-                int maxHeight = Math.Min(copyRect.Height, manager.View.RowCount - row);
-                int maxWidth = Math.Min(copyRect.Width, manager.View.ColumnCount - col);
+                // コピー範囲のサイズを取得
+                int bufferHeight = manager.CopyBuffer.GetLength(0);
+                int bufferWidth = manager.CopyBuffer.GetLength(1);
 
+                // DataGridViewの範囲内に収まるように調整
+                int maxHeight = Math.Min(bufferHeight, manager.View.RowCount - row);
+                int maxWidth = Math.Min(bufferWidth, manager.View.ColumnCount - col);
+
+                // DataGridViewに書き戻す
                 for (int i = 0; i < maxHeight; i++)
                 {
                     for (int j = 0; j < maxWidth; j++)
                     {
-                        // 範囲外の処理はしない
-                        if (i < manager.CopyBuffer.GetLength(0) && j < manager.CopyBuffer.GetLength(1))
-                        {
-                            manager.View[col + j, row + i].Value = manager.CopyBuffer[i, j];
-                        }
+                        manager.View[col + j, row + i].Value = manager.CopyBuffer[i, j];
                     }
                 }
             }
         }
+
 
         public void ClearSelection(Rect range, GridViewManager manager)
         {
@@ -149,6 +151,7 @@ namespace AEIOU
                 int maxWidth = Math.Min(copyRect.Width, manager.View.ColumnCount - _col);
                 _oldValues = new String[maxHeight, maxWidth];
 
+                // コピー範囲の値を保存
                 for (int i = 0; i < maxHeight; i++)
                 {
                     for (int j = 0; j < maxWidth; j++)
