@@ -217,12 +217,12 @@ class GridView(QTableWidget):
             new_top_row = max(0, top_row - selected_row_count)
             new_bottom_row = new_top_row + selected_row_count - 1
             self.clearSelection()
-        # 選択範囲を設定 (表示範囲に収めるようにする)
-        self.setCurrentCell(new_bottom_row, left_column)
-        self.setCurrentCell(new_top_row, left_column)
-        self.setRangeSelected(
-            QTableWidgetSelectionRange(new_top_row, left_column, new_bottom_row, right_column), True
-        )
+            # 選択範囲を設定 (表示範囲に収めるようにする)
+            self.setCurrentCell(new_bottom_row, left_column)
+            self.setCurrentCell(new_top_row, left_column)
+            self.setRangeSelected(
+                QTableWidgetSelectionRange(new_top_row, left_column, new_bottom_row, right_column), True
+            )
 
     def handle_asterisk_key(self, event, top_row, bottom_row, left_column, right_column, selected_row_count):
         """
@@ -283,7 +283,7 @@ class GridView(QTableWidget):
 def calc_timing(keys, fps=24, start_frame=1):
     """
     キー情報を計算する
-    - keys = {frame: value, ..}, frame = フレーム数(1~), value = セル番号(1~)
+    - keys = {frame: value, ..}, frame = フレーム数(0~), value = セル番号(start_frame~)
     - start_frame = 0 or 1
     - 上記の値から、{frame: (value - start_frame) / fps} の辞書を生成
     """
