@@ -1,3 +1,10 @@
+'''
+Python3系 + PySide6 モジュール利用
+セル入力の基礎的な実装サンプル（'25.04.27 by kanbara with GitHub Copilot.）
+
+Pythonを使って、ツールを自作する際の参考にどうぞ。
+VSCodeの GitHub Copilotに出して貰ったので、Copilotに質問をすれば、実装の動作内容や修正案など、いろいろ教えてくれると思います。
+'''
 from PySide6.QtWidgets import QApplication, QTableWidget, QTableWidgetItem, QTableWidgetSelectionRange, QAbstractItemView
 from PySide6.QtCore import Qt
 import sys
