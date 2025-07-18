@@ -36,7 +36,7 @@ namespace AEIOU
         public String CurrentDir;                   //カレントパス
         public bool IsAutoadjust = false;           //自動サイズ調整
         public bool IsKaraNoMove = false;           //空セル入力時の移動動作
-        public bool IsDisplayFrameNumber = false;   //空セル入力時の移動動作
+        public bool IsDisplayFrameNumber = false;   // フレーム番号を表示するかどうか
         public bool IsAlwaysAppend = false;         //入力動作：常時追加入力にするか否か
         public String AfterPath = "C:\\Program Files\\Adobe\\Adobe After Effects CS5\\Support Files\\AfterFX.exe";
                                                     //afterfx.exe パス
