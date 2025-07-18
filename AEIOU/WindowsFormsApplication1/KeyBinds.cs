@@ -101,8 +101,8 @@ namespace AEIOU
             KaraCellNoMove = getInnerText("karaCellNoMove", doc.SelectNodes("/document/pref/shortcuts/karaCellNoMove"));
             InputSheetSec = getInnerText("inputSheetSec", doc.SelectNodes("/document/pref/shortcuts/inputSheetSec"));
             SetSheetDiv4 = getInnerText("setSheetDiv4", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv4"));
-            SetSheetDiv6 = getInnerText("setSheetDiv4", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv6"));
-            SetSheetDiv12 = getInnerText("setSheetDiv4", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv12"));
+            SetSheetDiv6 = getInnerText("setSheetDiv6", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv6"));
+            SetSheetDiv12 = getInnerText("setSheetDiv12", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv12"));
             StayOnTop = getInnerText("stayOnTop", doc.SelectNodes("/document/pref/shortcuts/stayOnTop"));
             AutoAdjust = getInnerText("autoAdjust", doc.SelectNodes("/document/pref/shortcuts/autoAdjust"));
             DisplayFrameNumber = getInnerText("displayFrameNumber", doc.SelectNodes("/document/pref/shortcuts/displayFrameNumber"));
