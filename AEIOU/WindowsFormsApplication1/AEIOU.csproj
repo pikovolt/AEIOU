@@ -81,13 +81,50 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\AEIOU.Automation.Abstractions\AEIOU.Automation.Abstractions.csproj">
+      <Project>{B275B027-369A-45F7-AF62-B1A492F96E91}</Project>
+      <Name>AEIOU.Automation.Abstractions</Name>
+      <Aliases>global</Aliases>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+      <Private>true</Private>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
     <Compile Include="ColorDefinitions.cs" />
+    <Compile Include="AutomationHost.cs" />
+    <Compile Include="AutomationExtensionLoader.cs" />
+    <Compile Include="AutomationRegistry.cs" />
+    <Compile Include="BuiltInAutomationCommands.cs" />
+    <Compile Include="AfterEffectsDataService.cs" />
+    <Compile Include="ContinuityStateService.cs" />
+    <Compile Include="Enums.cs" />
     <Compile Include="Form1.cs">
       <SubType>Form</SubType>
     </Compile>
     <Compile Include="Form1.Designer.cs">
       <DependentUpon>Form1.cs</DependentUpon>
     </Compile>
+    <Compile Include="Form1.Shortcut.cs">
+      <DependentUpon>Form1.cs</DependentUpon>
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GridRect.cs" />
+    <Compile Include="GridCellRenderer.cs" />
+    <Compile Include="GridCellStyleResolver.cs" />
+    <Compile Include="GridBorderStateCalculator.cs" />
+    <Compile Include="GridFrameHeaderPainter.cs" />
+    <Compile Include="GridFrameLabelFormatter.cs" />
+    <Compile Include="GridKeyCommandDispatcher.cs" />
+    <Compile Include="GridMoveSelectionCommand.cs" />
+    <Compile Include="GridValueInputCommand.cs" />
+    <Compile Include="GridShortcutRouter.cs" />
+    <Compile Include="GridCellValueService.cs" />
+    <Compile Include="GridMouseEventHandler.cs" />
+    <Compile Include="GridInputInterpreter.cs" />
+    <Compile Include="GridScrollService.cs" />
+    <Compile Include="GridSelectionService.cs" />
+    <Compile Include="GridViewManager.cs" />
+    <Compile Include="GridViewOperation.cs" />
     <Compile Include="InputBox1.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -95,10 +132,10 @@
       <DependentUpon>InputBox1.cs</DependentUpon>
     </Compile>
     <Compile Include="KeyBinds.cs" />
+    <Compile Include="OperationGroup.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Range.cs" />
-    <Compile Include="Rect.cs" />
     <Compile Include="RepeatInputBox.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -106,9 +143,15 @@
       <DependentUpon>RepeatInputBox.cs</DependentUpon>
     </Compile>
     <Compile Include="Settings.cs" />
+    <Compile Include="SheetEditContracts.cs" />
+    <Compile Include="SheetColumnEditCalculator.cs" />
+    <Compile Include="SheetRowEditCalculator.cs" />
+    <Compile Include="StsFileService.cs" />
     <Compile Include="TimingCell.cs" />
     <Compile Include="TimingColumn.cs" />
+    <Compile Include="TimingSheetModel.cs" />
     <Compile Include="UndoGroup.cs" />
+    <Compile Include="UndoManager.cs" />
     <Compile Include="UndoOperation.cs" />
     <EmbeddedResource Include="Form1.resx">
       <DependentUpon>Form1.cs</DependentUpon>

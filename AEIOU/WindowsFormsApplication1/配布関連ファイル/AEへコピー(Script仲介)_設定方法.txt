@@ -1,73 +1,73 @@
-�� AE�փR�s�[(Script����) �@�\�̐ݒ���@�ɂ���
+■ AEへコピー(Script仲介) 機能の設定方法について
 
-�� �͂��߂�
+○ はじめに
 
-�@�wAE�փR�s�[(Script����)�x�̋@�\��ǉ����܂����B
-�@���̋@�\��AEIOU.exe�ɉ����āA���L�Q�̃t�@�C���iexe�y��jsx�j�𕹗p���ē��삵�܂��B
+　『AEへコピー(Script仲介)』の機能を追加しました。
+　この機能はAEIOU.exeに加えて、下記２つのファイル（exe及びjsx）を併用して動作します。
 
-�@�@�EgetClipboard.exe	(64bit �R���\�[���A�v���P�[�V����)
-�@�@�EsetRemap.jsx	(AfterEffects�p JavaScript�t�@�C��)
-
-
-�� getClipboard.exe
-
-�@���O�̒ʂ�N���b�v�{�[�h�̓��e���擾����A�v���P�[�V�����ł��B
-�@AfterEffects�ɑ����ăN���b�v�{�[�h�̓��e���擾���܂��B�@
-
-�@���ݒ���@��
-�@�Ăяo����邾���̃A�v���P�[�V�����Ȃ̂ŁA�K���ȏꏊ�ɃR�s�[���Ă��������B
-�@�p�X�������Ȃ�Ɗm�F������Ȃ�̂ŁA�o�����c:\��d:\�̒����ɒu���Ă��܂��̂������葁���ł��B
-�@�����łȂ��ꍇ��AfterFX.exe�Ɠ����ꏊ�ɔz�u����ȂǍl�����܂����A���܂����ꏊ�ɒu���Ă��������B
+　　・getClipboard.exe	(64bit コンソールアプリケーション)
+　　・setRemap.jsx	(AfterEffects用 JavaScriptファイル)
 
 
-�� setRemap.jsx
+○ getClipboard.exe
 
-�@��������O�̒ʂ�A���}�b�v��ݒ肷��AfterEffects�p�̃X�N���v�g�ł��B
-�@���ݑI�����Ă��郌�C���[�̃^�C�����}�b�v�ɁA�N���b�v�{�[�h�̓��e��ݒ肵�܂��B
+　名前の通りクリップボードの内容を取得するアプリケーションです。
+　AfterEffectsに代わってクリップボードの内容を取得します。　
 
-�@!!!!�@���Ӂ@!!!!
-�@���s�O�ɐݒ肳��Ă����^�C�����}�b�v�͔j������A�N���b�v�{�[�h�̓��e�����f����܂��B
-�@���}�b�v���e��j���������Ȃ��ꍇ�ɂ́A���s���Ȃ��悤�ɂ��Ă��������B
-
-�@���ݒ���@��
-�@�G�f�B�^��setRemap.jsx���J���A82�s�ڂ̕�����i"D:\\getClipboard.exe"�j�������̊��ɍ��킹�ďC�����Ă��������B
-�@�C�����I�������AAfterEffects��Scripts�t�H���_���ɔz�u���Ă��������B
+　＜設定方法＞
+　呼び出されるだけのアプリケーションなので、適当な場所にコピーしてください。
+　パスが長くなると確認が難しくなるので、出来ればc:\やd:\の直下に置いてしまうのが手っ取り早いです。
+　そうでない場合はAfterFX.exeと同じ場所に配置するなど考えられますが、決まった場所に置いてください。
 
 
-�� AEIOU.exe
+○ setRemap.jsx
 
-�@�Ō��AEIOU�ɒǉ������ݒ�iAfterFX.exe�y��serRemap.jsx�̃p�X�j��ύX���܂��B
+　これも名前の通り、リマップを設定するAfterEffects用のスクリプトです。
+　現在選択しているレイヤーのタイムリマップに、クリップボードの内容を設定します。
 
-�@�܂��AAEIOU�̋N���O�ɌÂ�"aeiou.dat"���폜���Ă��������B
-�@�폜���I�������AEIOU���N�����A�E�N���b�N���j���̃I�v�V�������J���Ă��������B
+　!!!!　注意　!!!!
+　実行前に設定されていたタイムリマップは破棄され、クリップボードの内容が反映されます。
+　リマップ内容を破棄したくない場合には、実行しないようにしてください。
 
-�@�ȉ��̂Q�̍��ڂ������I�����AAfterFX.exe��setRemap.jsx�̏ꏊ���w�肵�Ă��������B
-
-�@�EAfterFX.exe �p�X�ݒ�
-�@�E���}�b�v�pjsx �p�X�ݒ�
-
-
-�@�Ō�ɂȂ�܂���...
-�@�ŏ���"aeiou.dat"���폜���Ă���̂ŁA�S�Ă̐ݒ肪������Ԃɖ߂��Ă��܂��B
-�@�����ݒ�ł͍��镔���́A�����̃X�^�C���ɍ��킹�čĐݒ���s���Ă��������B
-
-�@�ȏ�ŁA�ݒ�͊����ł��B
+　＜設定方法＞
+　エディタでsetRemap.jsxを開き、82行目の文字列（"D:\\getClipboard.exe"）を自分の環境に合わせて修正してください。
+　修正が終わったら、AfterEffectsのScriptsフォルダ下に配置してください。
 
 
-���g����
+○ AEIOU.exe
 
-�@AfterEffects���N�����A�R���|�W�V�������쐬������Z���f�ނ̃t�b�e�[�W��z�u���܂��B
-�@�^�C�����}�b�v��ݒ肵�������C���[��I����Ԃɂ����炻�̏�Ԃ̂܂܂�AEIOU���N�����܂��B
-�@AEIOU�Ń^�C�~���O����͂�"Ctrl+P"����͂��܂��B
-�@�i�������́A�E�N���b�N���j������"AE�փR�s�[(Script����)"��I���j
+　最後にAEIOUに追加した設定（AfterFX.exe及びserRemap.jsxのパス）を変更します。
 
-�@�ȏ�ŁA���ݑI�𒆂̃��C���[��AEIOU�Ŏw�肵�����}�b�v��񂪔��f����܂��B
-�@�i�L�[�̕�ԕ��@�́A��ɒ�~��ԂŐݒ肵�܂��j
+　まず、AEIOUの起動前に古い"aeiou.dat"を削除してください。
+　削除が終わったらAEIOUを起動し、右クリックメニュのオプションを開いてください。
 
-�@!!! �⑫ !!!
-�@�R�s�[����"getClipboard.exe"�̎��s���J�n�ł��Ȃ��iMSVCR100.DLL���݂���Ȃ��j�Ƃ����G���[���o��ꍇ�ɂ͉��L�̂��̂��C���X�g�[�����Ă��������B
-�@http://www.microsoft.com/downloads/details.aspx?familyid=BD512D9E-43C8-4655-81BF-9350143D5867&displaylang=ja
+　以下の２つの項目を順次選択し、AfterFX.exeとsetRemap.jsxの場所を指定してください。
 
-�@�ȏ�ł��B
+　・AfterFX.exe パス設定
+　・リマップ用jsx パス設定
+
+
+　最後になりますが...
+　最初に"aeiou.dat"を削除しているので、全ての設定が初期状態に戻っています。
+　初期設定では困る部分は、自分のスタイルに合わせて再設定を行ってください。
+
+　以上で、設定は完了です。
+
+
+○使い方
+
+　AfterEffectsを起動し、コンポジションを作成したらセル素材のフッテージを配置します。
+　タイムリマップを設定したいレイヤーを選択状態にしたらその状態のままでAEIOUを起動します。
+　AEIOUでタイミングを入力し"Ctrl+P"を入力します。
+　（もしくは、右クリックメニュから"AEへコピー(Script仲介)"を選択）
+
+　以上で、現在選択中のレイヤーにAEIOUで指定したリマップ情報が反映されます。
+　（キーの補間方法は、常に停止状態で設定します）
+
+　!!! 補足 !!!
+　コピー時に"getClipboard.exe"の実行を開始できない（MSVCR100.DLLがみつからない）というエラーが出る場合には下記のものをインストールしてください。
+　http://www.microsoft.com/downloads/details.aspx?familyid=BD512D9E-43C8-4655-81BF-9350143D5867&displaylang=ja
+
+　以上です。
 
 [eof]

@@ -74,34 +74,44 @@ namespace AEIOU
             DataGridViewAdvancedBorderStyle advancedBorderStyle,
             DataGridViewPaintParts paintParts)
         {
-            // 値が入っている場合のみ、カスタム描画を実行
-            if (value != null)
+            // 常にカスタム描画を実行する。
+            // 値の null 有無に描画結果（背景色/継続線/基準線）が依存すると、
+            // 同期タイミング次第で装飾描画が失われるため。
+            bool isSelected = (elementState & DataGridViewElementStates.Selected) == DataGridViewElementStates.Selected;
+            bool drawContentForeground =
+                (paintParts & DataGridViewPaintParts.ContentForeground) == DataGridViewPaintParts.ContentForeground;
+
+            // 背景の描画
+            if ((paintParts & DataGridViewPaintParts.Background) ==
+                DataGridViewPaintParts.Background)
             {
-
-                // 背景の描画
-                if ((paintParts & DataGridViewPaintParts.Background) ==
-                    DataGridViewPaintParts.Background)
+                using (SolidBrush cellBackground =
+                    isSelected
+                    ? new SolidBrush(cellStyle.SelectionBackColor)
+                    : new SolidBrush(cellStyle.BackColor))
                 {
-                    SolidBrush cellBackground =
-                        (elementState == DataGridViewElementStates.Selected)
-                        ? new SolidBrush(cellStyle.SelectionBackColor)
-                        : new SolidBrush(cellStyle.BackColor);
                     graphics.FillRectangle(cellBackground, cellBounds);
-                    cellBackground.Dispose();
                 }
+            }
 
-                // 境界線の描画
-                if ((paintParts & DataGridViewPaintParts.Border) ==
-                    DataGridViewPaintParts.Border)
-                {
-                    PaintBorder(graphics, clipBounds, cellBounds, cellStyle,
-                        advancedBorderStyle);
-                }
+            // 境界線の描画
+            if ((paintParts & DataGridViewPaintParts.Border) ==
+                DataGridViewPaintParts.Border)
+            {
+                PaintBorder(graphics, clipBounds, cellBounds, cellStyle,
+                    advancedBorderStyle);
+            }
 
-                // カラセル(×印)記号の描画
-                if (isKaraCell)
+            if (!drawContentForeground)
+            {
+                return;
+            }
+
+            // カラセル(×印)記号の描画
+            if (isKaraCell)
+            {
+                using (Pen linepen = new Pen(Color.LightGray, 1))
                 {
-                    Pen linepen = new Pen(Color.LightGray, 1);
                     graphics.DrawLine(
                         linepen,
                         cellBounds.X,
@@ -115,11 +125,13 @@ namespace AEIOU
                         cellBounds.X,
                         cellBounds.Y + cellBounds.Height - 2);
                 }
+            }
 
-                // 継続記号の描画
-                if (isContinuousLine)
+            // 継続記号の描画
+            if (isContinuousLine)
+            {
+                using (Pen linepen = new Pen(Color.LightGray, 1))
                 {
-                    Pen linepen = new Pen(Color.LightGray, 1);
                     int w = cellBounds.Right - cellBounds.Left;
                     graphics.DrawLine(
                         linepen,
@@ -128,11 +140,13 @@ namespace AEIOU
                         cellBounds.X + w / 2 - 2,
                         cellBounds.Y + cellBounds.Height - 2);
                 }
+            }
 
-                //１秒毎の基準線を描画
-                if ((borderState & SheetBorder.EverySec) != SheetBorder.None)
+            //１秒毎の基準線を描画
+            if ((borderState & SheetBorder.EverySec) != SheetBorder.None)
+            {
+                using (Pen linepen = new Pen(Color.Black, 3))
                 {
-                    Pen linepen = new Pen(Color.Black, 3);
                     graphics.DrawLine(
                         linepen,
                         cellBounds.X,
@@ -140,11 +154,13 @@ namespace AEIOU
                         cellBounds.X + cellBounds.Width,
                         cellBounds.Y + cellBounds.Height - 2);
                 }
+            }
 
-                //ｎコマ毎の基準線を描画
-                if ((borderState & SheetBorder.EveryNFrames) != SheetBorder.None)
+            //ｎコマ毎の基準線を描画
+            if ((borderState & SheetBorder.EveryNFrames) != SheetBorder.None)
+            {
+                using (Pen linepen = new Pen(Color.LightGray, 2))
                 {
-                    Pen linepen = new Pen(Color.LightGray, 2);
                     graphics.DrawLine(
                         linepen,
                         cellBounds.X,
@@ -152,11 +168,13 @@ namespace AEIOU
                         cellBounds.X + cellBounds.Width,
                         cellBounds.Y + cellBounds.Height - 1);
                 }
+            }
 
-                //シート毎の基準線を描画
-                if ((borderState & SheetBorder.EverySheet) != SheetBorder.None)
+            //シート毎の基準線を描画
+            if ((borderState & SheetBorder.EverySheet) != SheetBorder.None)
+            {
+                using (Pen linepen = new Pen(Color.Red, 3))
                 {
-                    Pen linepen = new Pen(Color.Red, 3);
                     graphics.DrawLine(
                         linepen,
                         cellBounds.X,
@@ -164,27 +182,20 @@ namespace AEIOU
                         cellBounds.X + cellBounds.Width,
                         cellBounds.Y + cellBounds.Height - 2);
                 }
-
-                // 内部領域の計算
-                Rectangle baseArea = cellBounds;
-                baseArea.Inflate(-2, -2);
-
-                // 文字の描画
-                // ※カラセルの場合は描画しない
-                if (this.FormattedValue is String && !isKaraCell)
-                {
-                    TextRenderer.DrawText(graphics,
-                        (string)this.FormattedValue,
-                        this.DataGridView.Font,
-                        baseArea, cellStyle.ForeColor);
-                }
             }
-            else
+
+            // 内部領域の計算
+            Rectangle baseArea = cellBounds;
+            baseArea.Inflate(-2, -2);
+
+            // 文字の描画
+            // ※カラセルの場合は描画しない
+            if (formattedValue is String && !isKaraCell)
             {
-                // ベースクラスでの描画
-                base.Paint(graphics, clipBounds, cellBounds, rowIndex,
-                    elementState, value, formattedValue, errorText,
-                    cellStyle, advancedBorderStyle, paintParts);
+                TextRenderer.DrawText(graphics,
+                    (string)formattedValue,
+                    this.DataGridView.Font,
+                    baseArea, cellStyle.ForeColor);
             }
         }
 

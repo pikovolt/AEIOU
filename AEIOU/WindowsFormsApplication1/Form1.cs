@@ -1,11 +1,23 @@
 ﻿// AfterEffects Input/Output Utility v3.x  Programed by kanbara.
 //
-//  ■v3.0
-//  (24-12-06 19:35) v3.0.0.4
-//      ・設定ファイルにバージョン文字列を持つように変更
+//  ■v3.2
+//  (26-10-03) v3.2.0.0
+//      ・データグリッドをVirtualMode化し、描画・入力・Undo・STS/AEデータ処理をForm1から分離
+//      ・キー入力をコマンド化して、移動・範囲選択・値入力・行削除の処理経路を整理
+//      ・自動処理を共通契約とホストへ移管し、外部DLLの検出・実行とランダム入力／AEコピーのサンプルを追加
+//
+//  ■v3.1
+//  (24-11-19 6:00) v3.1.0.0
+//　　　・アンドゥ実装の書き換え
+//　　　　→リドゥ動作の追加
+//      ・タイミングコピー時のバージョン文字列を iniファイルに記録する動作の追加（.iniファイルは削除して、新しく作る必要あり）
 //      ・起動時に、dataGridViewにフォーカスを当てる（起動時に、クリックしないとキー入力が効かないため）
+//      ・セルの列ヘッダクリックで、１列全選択する動作を追加（何故か付けてなかった..）
+//      ・繰り返し操作のダイアログをモードレスに変更して、Okボタンを押す事に、Undoして繰り返し情報の入力。という動作に
+//        （単にUndoするもので、繰り返しの入力だけを狙ってUndoするわけではない点に注意）
 //      ・初回コピーで例外が上がる場合があるのを修正（リトライ処理、リトライ失敗時の通知）
 //
+//  ■v3.0
 //  (13-04-20 13:00) v3.0.0.3
 //　　　・設定ファイル読み込みのエラー処理が足りなかった部分を修正
 //　　　　→Settingsの読み込み時にエラー処理追加。
@@ -271,85 +283,79 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
+using global::AEIOU.Automation;
 
 namespace AEIOU
 {
-
-    // 基準線の状態 を表す列挙体
-    // (パクリ元)⇒http://smdn.jp/programming/netfx/enum/1_flags/
-    [Flags]
-    enum SheetBorder : int
+    public partial class Form1 : Form, IGridShortcutHandler, IAutomationChangeTarget, IAutomationSessionTarget
     {
-        EveryNFrames = 0x00000001,  //ｎコマ毎
-        EverySec = 0x00000002,      //１秒毎
-        EverySheet = 0x00000004,    //シート毎
-        None = 0x00000000,          //なし
-    }
+	    //----------------------------------------------------------------------------------------
+	    // 配色
+	    ColorDefinitions gridPalette = new ColorDefinitions();        //グリッド描画用 色設定
 
-    // リマップ出力モード を表す列挙体
-    [Flags]
-    enum RemapOutputMode : int
-    {
-        AERemap = 0x00000001,       //AEへコピー(通常のリマップ計算)
-        DirectRemap = 0x00000002,   //AEへコピー(ダイレクトリマップ)
-        JSRemap = 0x00000004,       //JavaScript経由のコピー(通常のリマップ計算)
-        JSDirectRemap = 0x00000008, //JavaScript経由のコピー(ダイレクトリマップ)
-        None = 0x00000000,          //なし
-    }
+	    // 設定用 各種変数
+	    Settings setting = new Settings();
 
-    // アンドゥ反映対象 を表す列挙体
-    [Flags]
-    enum UndoOperationTarget : int
-    {
-        ToGrid = 0x00000001,            //グリッドへ
-        ToCopyBuffer = 0x00000002,      //コピーバッファへ
-        MoveToCopyBuffer = 0x00000003,  //グリッドからコピーバッファへ移動
-        FromCopyBuffer = 0x00000004,    //コピーバッファからグリッドへ
-        None = 0x00000000,              //なし
-    }
+	    // 各種変数
+	    Control owner;                              //子ウィンドウ（ダイアログ）に与える自分のウィンドウハンドル
+	    Rect selectRange;                           //選択範囲
+	    Rect copyRect;                              //コピー範囲
+	    Point mouseDownPoint;                       //マウス押下位置
+	    bool isRectDrag;                            //範囲移動状態
+        bool isCtrlDragCopy;                        //Ctrlドラッグでコピー動作を行うか
+	    bool isFirstEdit;                           //初回編集状態（セル入力を中断するような操作の度に trueにされるべき）
+        bool isCellEdit;                            //セルが編集されたかどうかのフラグ
 
-    // 初期化対象 を表す列挙体
-    [Flags]
-    enum InitializeTarget : int
-    {
-        EditTemp = 0x00000001,          //カーソル位置, 選択範囲などの作業用変数
-        Timing = 0x00000002,            //タイミング情報
-        CopyBuffer = 0x00000004,        //コピーバッファ
-        UndoHistory = 0x00000008,       //アンドゥ履歴
-        RangeSetting = 0x00000010,      //範囲設定
-        None = 0x00000000,              //なし
-    }
+	    // 配列
+	    int[] aryCellUsedCount;                     //セル使用状況
+	                                                //int[, ,] gAryBuff;                          //バッファ
 
-    // コンビネーションキー を表す列挙体
-    [Flags]
-    enum CombinationKeyState : int
-    {
-        ALTKey = 0x00000100,            //ALT
-        CTRLKey = 0x00000200,           //CTRL
-        SHIFTKey = 0x00000400,          //SHIFT
-        None = 0x00000000,              //なし
-    }
+	    // リスト
+	    List<Range> delRange;                       // 中抜き範囲
+	    List<Range> addRange;                       // 切り貼り範囲
 
-    // 四則演算のモード を表す列挙体
-    enum CalcMode : int
-    {
-        Plus = 0x00000001,              //加算
-        Minus,                          //減算
-        Multiple,                       //乗算
-        Divide,                         //除算
-        None = 0x00000000,              //なし
-    }
+        // アンドゥ処理
+        private GridViewManager gridViewManager = new GridViewManager();
+        private GridFrameLabelFormatter gridFrameLabelFormatter;
+        private GridFrameHeaderPainter gridFrameHeaderPainter;
+        private GridBorderStateCalculator gridBorderStateCalculator;
+        private GridShortcutRouter gridShortcutRouter;
+        private GridKeyCommandDispatcher gridKeyCommandDispatcher;
+        private GridMoveSelectionCommand gridMoveSelectionCommand;
+        private GridValueInputCommand gridValueInputCommand;
+        private GridCellValueService gridCellValueService;
+        private GridMouseEventHandler gridMouseEventHandler;
+        private readonly StsFileService stsFileService = new StsFileService();
+        private readonly AfterEffectsDataService afterEffectsDataService = new AfterEffectsDataService();
+        private readonly AutomationRegistry automationRegistry;
+        private readonly AutomationHost automationHost;
+        private long automationGeneration;
 
+        // 先行分離したサービス
+        GridSelectionService gridSelectionService;
+        GridScrollService gridScrollService;
+        GridCellStyleResolver gridCellStyleResolver;
+        GridCellRenderer gridCellRenderer;
+        GridInputInterpreter gridInputInterpreter;
+        TimingSheetModel timingSheetModel;
+        ContinuityStateService continuityStateService;
+        bool isCellValuePushedBound;
 
-    public partial class Form1 : Form
-    {
+        // 繰り返しダイアログ
+        private RepeatInputBox _repeatInputDialog;
+        private AutomationSession _repeatAutomationSession;
+
         //----------------------------------------------------------------------------------------
         // コンストラクタ
         public Form1()
         {
+            automationRegistry = BuiltInAutomationRegistry.Create();
+            automationHost = new AutomationHost(1000000, automationRegistry);
             InitializeComponent();
+            LoadAutomationExtensions();
+            gridViewManager.View = dataGridView1;
 
-            // 自分のウィンドウハンドルを取得しておく（tooltip表示中に、違うウィンドウハンドルを取得してしまうので）
+            // 自分のウィンドウハンドルを取得しておく
             this.owner = Control.FromHandle(this.Handle);
 
             //datagridviewのダブルバッファを有効にする
@@ -449,6 +455,24 @@ namespace AEIOU
             // 作業データの初期化
             InitializeWork(true);
 
+            // 先行分離サービスの初期化
+            gridSelectionService = new GridSelectionService(dataGridView1, setting);
+            gridScrollService = new GridScrollService(dataGridView1, setting);
+            gridCellStyleResolver = new GridCellStyleResolver();
+            gridCellRenderer = new GridCellRenderer(dataGridView1, setting, GetCellValue);
+            gridFrameLabelFormatter = new GridFrameLabelFormatter(setting.Fps, setting.SheetSec);
+            gridFrameHeaderPainter = new GridFrameHeaderPainter(gridFrameLabelFormatter);
+            gridBorderStateCalculator = new GridBorderStateCalculator(setting.Fps, setting.SheetSec, setting.SheetDivide);
+            gridInputInterpreter = new GridInputInterpreter(setting.keys);
+            gridShortcutRouter = new GridShortcutRouter(this); // Initialize GridShortcutRouter here
+            gridKeyCommandDispatcher = new GridKeyCommandDispatcher(gridInputInterpreter, gridShortcutRouter, tryExecuteShortcut);
+            gridCellValueService = new GridCellValueService(gridViewManager, GetCellValue, checkCellValue, (col) => aryCellUsedCount[col]++);
+            gridMoveSelectionCommand = new GridMoveSelectionCommand(dataGridView1, setting, gridSelectionService, gridScrollService);
+            gridValueInputCommand = new GridValueInputCommand(dataGridView1, setting, gridCellValueService, gridSelectionService, gridScrollService);
+            gridMouseEventHandler = new GridMouseEventHandler(gridViewManager, copyToBuf, cutToBuf, copyToCell, getSelectedRect);
+            continuityStateService = new ContinuityStateService(setting, GetCellValue);
+            continuityStateService.Reinitialize(GetSheetColumnCount(), GetSheetRowCount());
+
             // 読み込みファイル指定がある場合 ファイル読込を行う
             if (cmds.Length > 1 && File.Exists(cmds[1]))
             {
@@ -510,64 +534,44 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
-        Control owner;                              //子ウィンドウ（ダイアログ）に与える自分のウィンドウハンドル
-        
-        // 配色
-        ColorDefinitions gridPalette = new ColorDefinitions();        //グリッド描画用 色設定
-
-        // 設定用 各種変数
-        Settings setting = new Settings();
-
-        // 各種変数
-        Rect selectRange;                           //選択範囲
-        Rect copyRect;                              //コピー範囲
-        Point mouseDownPoint;                       //マウス押下位置
-        bool isRectDrag;                            //範囲移動状態
-        bool isFirstEdit;                           //初回編集状態（セル入力を中断するような操作の度に trueにされるべき）
-
-        // 配列
-        int[] aryCellUsedCount;                     //セル使用状況
-        String[,] aryCopyBuf;                       //コピーバッファ
-        //int[, ,] gAryBuff;                          //バッファ
-
-        // リスト
-        List<Range> delRange;                       // 中抜き範囲
-        List<Range> addRange;                       // 切り貼り範囲
-        List<UndoGroup> undoList;                   // アンドゥリスト
-
-
-        //----------------------------------------------------------------------------------------
         // 作業内容の初期化
-        private void InitializeWork(bool isBoot)
+        public void InitializeWork(bool isBoot)
         {
+            SetCellValuePushedBinding(false);
+
+            timingSheetModel = new TimingSheetModel(setting.ColLength, setting.RowLength);
+
             // ヘッダ、各カラム及び行数の設定
             dataGridInitialize(setting.ColLength, setting.RowLength, 50, isBoot);    // 列, 行, 列幅
 
             // 配列作成
             aryCellUsedCount = new int[setting.ColLength];
-            aryCopyBuf = new String[setting.ColLength, setting.RowLength];
             //gAryBuff = new int[setting.ColLength, setting.RowLength, gEtcLength];
-
-            for (int i = 0; i < setting.RowLength; i++)
-                for (int j = 0; j < setting.ColLength; j++)
-                {
-                    aryCopyBuf[j, i] = "";
-                }
 
             // リスト作成
             delRange = new List<Range>();
             addRange = new List<Range>();
-            undoList = new List<UndoGroup>();
 
             // アンドゥメニュを初期化
-            setUndoText("");
+            gridViewManager.InitializeWork(dataGridView1, timingSheetModel);
+            gridViewManager.CellValueChanged -= OnGridViewManagerCellValueChanged;
+            gridViewManager.CellValueChanged += OnGridViewManagerCellValueChanged;
+
+            if (continuityStateService != null)
+            {
+                continuityStateService.Reinitialize(GetSheetColumnCount(), GetSheetRowCount());
+            }
 
             // 各種変数の初期化
             selectRange = new Rect(0, 0, 1, 1);     //選択範囲
             copyRect = new Rect(-1, -1, 0, 0);      //コピー範囲
             mouseDownPoint = new Point(-1, -1);     //マウス押下位置
             isRectDrag = false;                     //範囲移動状態
+            isCtrlDragCopy = false;
             isFirstEdit = true;
+            isCellEdit = false;
+
+            SetCellValuePushedBinding(true);
         }
 
         //----------------------------------------------------------------------------------------
@@ -581,37 +585,46 @@ namespace AEIOU
                 mouseDownPoint = new Point(-1, -1);             //マウス押下位置
                 selectRange = new Rect(0, 0, 1, 1);             //選択範囲
                 isRectDrag = false;                             //範囲移動状態
+                isCtrlDragCopy = false;
                 isFirstEdit = true;
+                isCellEdit = false;
             }
             if ((target & InitializeTarget.Timing) != 0)
             {
+                SetCellValuePushedBinding(false);
+
                 // シートの入力情報（タイミング）の初期化
                 // ※バージョンの扱いをどうするのかは未定
+                timingSheetModel = new TimingSheetModel(setting.ColLength, setting.RowLength);
+                gridViewManager.Model = timingSheetModel;
                 dataGridInitialize(setting.ColLength, setting.RowLength, 50, false);    // 列, 行, 列幅
                 aryCellUsedCount = new int[setting.ColLength];
                 for (int i = 0; i < setting.RowLength; i++)
                     for (int j = 0; j < setting.ColLength; j++)
                     {
-                        dataGridView1[j, i].Value = "";
+                        SetCellValue(j, i, "");
                     }
+
+                if (continuityStateService != null)
+                {
+                    continuityStateService.Reinitialize(GetSheetColumnCount(), GetSheetRowCount());
+                }
+
                 isFirstEdit = true;
+                isCellEdit = false;
+
+                SetCellValuePushedBinding(true);
             }
             if ((target & InitializeTarget.CopyBuffer) != 0)
             {
                 // コピーバッファの初期化
                 copyRect = new Rect(-1, -1, 0, 0);     //コピー範囲
-                aryCopyBuf = new String[setting.ColLength, setting.RowLength];
-                for (int i = 0; i < setting.RowLength; i++)
-                    for (int j = 0; j < setting.ColLength; j++)
-                    {
-                        aryCopyBuf[j, i] = "";
-                    }
             }
             if ((target & InitializeTarget.UndoHistory) != 0)
             {
-                // アンドゥ履歴の初期化
-                undoList = new List<UndoGroup>();
-                setUndoText("");                    // アンドゥメニュを初期化
+                // アンドゥ処理の初期化
+                gridViewManager.InitializeWork(dataGridView1, timingSheetModel);
+
             }
             if ((target & InitializeTarget.RangeSetting) != 0)
             {
@@ -623,13 +636,34 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // CellValuePushedイベントのバインド設定
+        private void SetCellValuePushedBinding(bool enabled)
+        {
+            if (enabled)
+            {
+                if (!isCellValuePushedBound)
+                {
+                    dataGridView1.CellValuePushed += new DataGridViewCellValueEventHandler(this.dataGridView1_CellValuePushed);
+                    isCellValuePushedBound = true;
+                }
+
+                return;
+            }
+
+            if (isCellValuePushedBound)
+            {
+                dataGridView1.CellValuePushed -= new DataGridViewCellValueEventHandler(this.dataGridView1_CellValuePushed);
+                isCellValuePushedBound = false;
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
         // DataGridViewのヘッダ、各カラム及び行数の設定を初期化
         private void dataGridInitialize(int columnCount, int rowCount, int columnWidth, bool isBoot)
         {
             dataGridView1.Rows.Clear();
             dataGridView1.Columns.Clear();
             dataGridView1.RowTemplate.Height = 16;  // セルの高さ(新規追加分)
-
 
             // "各セル" 列の設定
             // ※セル名称の設定は起動時のみ行う
@@ -655,17 +689,19 @@ namespace AEIOU
                 col.Width = columnWidth;
                 col.SortMode = DataGridViewColumnSortMode.NotSortable; //ヘッダークリックによるソート動作を禁止
                 this.dataGridView1.Columns.Add(col);
+                SetHeaderValue(i, cellName);
             }
 
             // 初期化 (行の生成 : 中身は空)
-            dataGridView1.RowCount = setting.RowLength;
-            for (int i = 0; i < setting.RowLength; i++)
-                for (int j = 0; j < setting.ColLength; j++)
-                    dataGridView1[j, i].Value = "";
+            gridViewManager.SyncGridShape(columnCount, rowCount);
+            for (int i = 0; i < rowCount; i++)
+                for (int j = 0; j < columnCount; j++)
+                    SetCellValue(j, i, "");
 
         }
 
         //----------------------------------------------------------------------------------------
+        // dataGridView1のグリッドサイズを変更する
         private void resizeDataGridView1(int newCol, int newRow)
         {
             // dataGridView1のグリッドサイズを変更する
@@ -680,10 +716,10 @@ namespace AEIOU
             for (int i = 0; i < col; i++)
             {
                 tempCellUsed[i] = aryCellUsedCount[i];
-                headerName[i] = dataGridView1.Columns[i].HeaderText;
+                headerName[i] = GetHeaderValue(i);
                 for (int j = 0; j < row; j++)
                 {
-                    temp[i, j] = dataGridView1[i, j].Value.ToString();
+                    temp[i, j] = GetCellValue(i, j);
                 }
             }
 
@@ -696,15 +732,16 @@ namespace AEIOU
             for (int i = 0; i < col; i++)
             {
                 aryCellUsedCount[i] = tempCellUsed[i];
-                dataGridView1.Columns[i].HeaderText = headerName[i];
+                SetHeaderValue(i, headerName[i]);
                 for (int j = 0; j < row; j++)
                 {
-                    dataGridView1[i, j].Value = temp[i, j];
+                    SetCellValue(i, j, temp[i, j]);
                 }
             }
         }
 
         //---------------------------------------------------------------------------
+        // ウィンドウサイズ・位置の調整
         void adjustWindowSize()
         {
             //ウィンドウサイズ・位置を調整
@@ -740,333 +777,123 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
-        private void undoFunction()
+        // リドゥ処理
+        private void redoFunction()
         {
-            if (undoList.Count == 0)
-            {
-                //リストが空の場合はなにもしない
-                return;
-            }
-
-            // 操作を１つ取り出す（※リストから省く）
-            UndoGroup group = undoList[undoList.Count - 1];
-            undoList.Remove(group);
-
-            // 操作を逆順に復元
-            for (int i = group.Operations.Count - 1; i >= 0; i--)
-            {
-                // 操作を取り出す
-                UndoOperation undo = group.Operations[i];
-                group.Operations.Remove(undo);
-
-                // グリッドへの編集を元に戻す
-                if (group.Target == UndoOperationTarget.ToGrid ||
-                    group.Target == UndoOperationTarget.MoveToCopyBuffer ||
-                    group.Target == UndoOperationTarget.FromCopyBuffer)
-                {
-                    bool isBlank = dataGridView1[undo.Column, undo.Row].Value.ToString() == "" ? true : false;
-                    String val = "";
-                    if (group.Target == UndoOperationTarget.MoveToCopyBuffer)
-                    {
-                        // グリッドからバッファに移動した場合
-                        val = undo.NewValue;
-                    }
-                    else
-                    {
-                        // グリッドを編集した場合
-                        // グリッドからバッファにコピーした場合
-                        val = undo.OldValue;
-                    }
-
-                    // グリッドの値を復元
-                    dataGridView1[undo.Column, undo.Row].Value = val;
-
-                    // セルの中身が"空白 or 入力済み"に変わった場合は、使用状況を修正
-                    if (val.Length == 0 && !isBlank)
-                    {
-                        // 入力済み ⇒ 空白
-                        aryCellUsedCount[undo.Column]--;
-                    }
-                    if (val.Length > 0 && isBlank)
-                    {
-                        // 空白 ⇒ 入力済み
-                        aryCellUsedCount[undo.Column]++;
-                    }
-                    isFirstEdit = true;
-                }
-
-                // バッファへの編集を元に戻す
-                if (group.Target == UndoOperationTarget.ToCopyBuffer ||
-                    group.Target == UndoOperationTarget.MoveToCopyBuffer)
-                {
-                    aryCopyBuf[undo.Column, undo.Row] = undo.OldValue;
-                }
-
-            }
-            // バッファ⇒グリッドの編集を元に戻した場合は 範囲設定も復元
-            if (group.Target == UndoOperationTarget.FromCopyBuffer)
-            {
-                copyRect = group.Rect;
-            }
-
-            // アンドゥメニュ更新 (※空の場合もあり)
-            if (undoList.Count > 0)
-                setUndoText(undoList[undoList.Count - 1].Title);
-            else
-                setUndoText("");
+            gridViewManager.Redo();
 
             // 描画更新(継続記号の更新の為)
             dataGridView1.Invalidate();
         }
 
-        //---------------------------------------------------------------------------
-        private void copyToCell(int col, int row, Rect rect)
+        //----------------------------------------------------------------------------------------
+        // アンドゥ処理
+        private void undoFunction()
         {
-            // アンドゥグループの作成
-            UndoGroup undoGroup = new UndoGroup(
-                setting.UndoCount++, "ペースト", UndoOperationTarget.FromCopyBuffer);
+            gridViewManager.Undo();
 
-            // 範囲を記録
-            undoGroup.Rect = rect;
+            // 描画更新(継続記号の更新の為)
+            dataGridView1.Invalidate();
 
-            //選択範囲の内容(バッファ)をセルに複写
-            for (int r = rect.Height - 1; r >= 0; r--)
-                for (int c = rect.Width - 1; c >= 0; c--)
-                {
-                    int gx = col + c;
-                    int gy = row + r;
-                    int bx = rect.Left + c;
-                    int by = rect.Top + r;
+        }
 
-                    if (by < 0 || bx < 0) continue;
-                    if (gy < 0 || gx < 0) continue;
-                    if (dataGridView1.Rows.Count <= by ||
-                       dataGridView1.Columns.Count <= bx) continue;
-                    if (dataGridView1.Rows.Count <= gy ||
-                       dataGridView1.Columns.Count <= gx) continue;
-
-                    DataGridViewCell cell = dataGridView1[gx, gy];
-                    String val = aryCopyBuf[bx, by];
-                    if (cell.Value.ToString() == "" && val != "")
-                    {
-                        // 空のセルに入力する場合はカウント＋１
-                        aryCellUsedCount[gx]++;
-
-                        // ⇒修正時はバージョン変更
-                    }
-                    else if (cell.Value.ToString() != "" && val == "")
-                    {
-                        // 中身のあるセルを空にする場合はカウント－１
-                        aryCellUsedCount[gx]--;
-
-                        // ⇒修正時はバージョン変更
-                    }
-
-                    // アンドゥ情報の作成
-                    UndoOperation undo = new UndoOperation(gx, gy, cell.Value.ToString(), val);
-
-                    // セルにペースト
-                    cell.Value = val;
-
-                    // アンドゥ情報の記録
-                    undoGroup.Operations.Add(undo);
-                }
-
-            // アンドゥ情報の記録
-            undoList.Add(undoGroup);
-            // アンドゥメニュ更新
-            setUndoText(undoGroup.Title);
-            // アンドゥ履歴の調整
-            processUndoLimit();
+        //---------------------------------------------------------------------------
+        // コピー先セルへのペースト処理
+        private void copyToCell(int col, int row, bool shouldInvalidate)
+        {
+            // PasteOperationのインスタンスを作成
+            PasteOperation pasteOperation = new PasteOperation(row, col);
+            
+            // GridViewManagerを使用して操作を実行
+            gridViewManager.ExecuteOperation(pasteOperation);
+            
+            // 描画更新(継続記号の更新の為)
+            if (shouldInvalidate)
+            {
+                dataGridView1.Invalidate();
+            }
         }
 
         //----------------------------------------------------------------------------------------
+        // コピー範囲をコピーバッファにコピーする
         private void copyToBuf(Rect rect)
         {
-            // アンドゥグループの作成
-            UndoGroup undoGroup = new UndoGroup(
-                setting.UndoCount++, "コピー", UndoOperationTarget.ToCopyBuffer);
+            // CopyOperationのインスタンスを作成
+            CopyOperation copyOperation = new CopyOperation(rect);
+            
+            // GridViewManagerを使用して操作を実行
+            gridViewManager.ExecuteOperation(copyOperation);
 
-            // 範囲の記録
-            undoGroup.Rect = rect;
-
-            //選択範囲をバッファに複写
-            for (int r = rect.Height - 1; r >= 0; r--)
-                for (int c = rect.Width - 1; c >= 0; c--)
-                {
-                    int x = rect.Left + c;
-                    int y = rect.Top + r;
-
-                    if (y < 0 || x < 0) continue;
-                    if (dataGridView1.Rows.Count <= y ||
-                       dataGridView1.Columns.Count <= x) continue;
-
-                    String _old = aryCopyBuf[x, y];
-                    String _new = dataGridView1[x, y].Value.ToString();
-
-                    // アンドゥ情報の作成
-                    UndoOperation undo = new UndoOperation(x, y, _old, _new);
-
-                    // バッファにコピー
-                    aryCopyBuf[x, y] = _new;
-
-                    // アンドゥ情報の記録
-                    undoGroup.Operations.Add(undo);
-                }
-
-            // アンドゥ情報の記録
-            undoList.Add(undoGroup);
-            // アンドゥメニュ更新
-            setUndoText(undoGroup.Title);
-            // アンドゥ履歴の調整
-            processUndoLimit();
         }
 
         //---------------------------------------------------------------------------
-        private void cutToBuf(Rect rect)
+        // 切り取り範囲をコピーバッファにコピーし、シートからは削除する
+        private void cutToBuf(Rect rect, bool shouldInvalidate)
         {
-            // アンドゥグループの作成
-            UndoGroup undoGroup = new UndoGroup(
-                setting.UndoCount++, "切り取り", UndoOperationTarget.MoveToCopyBuffer);
+            // CutOperationのインスタンスを作成
+            CutOperation cutOperation = new CutOperation(rect);
+            
+            // GridViewManagerを使用して操作を実行
+            gridViewManager.ExecuteOperation(cutOperation);
 
-            // 範囲の記録
-            undoGroup.Rect = rect;
+            // 描画更新(継続記号の更新の為)
+            if (shouldInvalidate)
+            {
+                dataGridView1.Invalidate();
+            }
 
-            //選択範囲をバッファに切り取り
-            for (int r = rect.Height - 1; r >= 0; r--)
-                for (int c = rect.Width - 1; c >= 0; c--)
-                {
-                    int x = rect.Left + c;
-                    int y = rect.Top + r;
-                    if (y < 0 || x < 0) continue;
-
-                    if (dataGridView1.Rows.Count <= y ||
-                       dataGridView1.Columns.Count <= x) continue;
-
-                    String _old = aryCopyBuf[x, y];
-                    String _new = dataGridView1[x, y].Value.ToString();
-
-                    // アンドゥ情報の作成
-                    UndoOperation undo = new UndoOperation(x, y, _old, _new);
-
-                    // 消去前に情報が入っているか確認
-                    if (checkCellValue(x, y))
-                    {
-                        //入っている場合は使用状況を修正
-                        aryCellUsedCount[x]--;
-                    }
-
-                    // バッファにコピー（※セル内容はクリア）
-                    aryCopyBuf[x, y] = _new;
-                    dataGridView1[x, y].Value = "";
-                    //pIsUsedCell[c+rect.Left-1] = false;
-
-                    // アンドゥ情報の記録
-                    undoGroup.Operations.Add(undo);
-                }
-
-            // アンドゥ情報の記録
-            undoList.Add(undoGroup);
-            // アンドゥメニュ更新
-            setUndoText(undoGroup.Title);
-            // アンドゥ履歴の調整
-            processUndoLimit();
         }
 
         //----------------------------------------------------------------------------------------
+        // 指定範囲をシートから削除する
         private void deleteRect(Rect rect)
         {
-            // アンドゥグループの作成
-            UndoGroup undoGroup = new UndoGroup(
-                setting.UndoCount++, "消去", UndoOperationTarget.ToGrid);
+            deleteRect(rect, true);
+        }
 
-            // 選択範囲のセル内容を消去
-            for (int i = 0; i < rect.Height; i++)
-                for (int j = 0; j < rect.Width; j++)
-                {
-                    // 消去前に情報が入っているか確認
-                    if (checkCellValue(rect.X + j, rect.Y + i))
-                    {
-                        //入っている場合は使用状況を修正
-                        aryCellUsedCount[rect.X]--;
-                    }
-
-                    // アンドゥ情報の作成
-                    UndoOperation undo = new UndoOperation(
-                        rect.X + j, rect.Y + i, 
-                        dataGridView1[rect.X + j, rect.Y + i].Value.ToString(), "");
-
-                    // 消去
-                    dataGridView1[rect.X + j, rect.Y + i].Value = "";
-
-                    // アンドゥ情報の記録
-                    undoGroup.Operations.Add(undo);
-                }
-
-            // アンドゥ情報の記録
-            undoList.Add(undoGroup);
-            // アンドゥメニュ更新
-            setUndoText(undoGroup.Title);
-            // アンドゥ履歴の調整
-            processUndoLimit();
+        //----------------------------------------------------------------------------------------
+        // 指定範囲をシートから削除する
+        private void deleteRect(Rect rect, bool shouldInvalidate)
+        {
+            // DeleteOperationのインスタンスを作成
+            DeleteOperation deleteOperation = new DeleteOperation(rect);
+            
+            // GridViewManagerを使用して操作を実行
+            gridViewManager.ExecuteOperation(deleteOperation);
+            
+            // 描画更新(継続記号の更新の為)
+            if (shouldInvalidate)
+            {
+                dataGridView1.Invalidate();
+            }
 
             isFirstEdit = true;
         }
 
         //----------------------------------------------------------------------------------------
+        // 指定セルに列を挿入する
         void insertToAllCell(int Row, int Count)
         {
-            // 指定セルの指定位置以降を、指定数だけ後ろに送る
-            for (int i = 0; i < setting.ColLength; i++)
-            {
-                for (int rw = (setting.RowLength - 1); rw >= Row + Count; rw--)
-                {
-                    // セル入力値をコピー
-                    dataGridView1[i, rw].Value =
-                        dataGridView1[i, rw - Count].Value;
+            IList<CellWriteEntry> writes = SheetRowEditCalculator.CreateInsertRows(
+                GetSheetRowCount(), GetSheetColumnCount(), Row, Count,
+                delegate(int row, int column) { return GetCellValue(column, row); });
+            ApplyRowEdit("行の挿入", writes);
 
-                    // セル色情報のコピー
-                    //if(DataGridView1[i, rw].Value.ToString() != "")
-                    //{
-                    //    gAryBuff[i, rw, gColorBufferNumber] = versionNumber;
-                    //}
-                }
-            }
-
-            // 指定範囲に被る領域を削除（空白にする）
-            Rect r = new Rect(0, Row, setting.ColLength, Count);
-            deleteRect(r);
         }
 
         //----------------------------------------------------------------------------------------
+        // 指定セルから列を削除する
         void cutToAllCell(int Row, int Count)
         {
-            //全てのセルの指定位置以降を、指定数だけ前に戻す
-            for (int i = 0; i < setting.ColLength; i++)
-            {
-                for (int rw = Row; (rw + Count) < setting.RowLength; rw++)
-                {
-                    // セル入力値をコピー
-                    dataGridView1[i, rw].Value =
-                        dataGridView1[i, rw + Count].Value;
-
-                    // セル色情報のコピー
-                    //if(dataGridView1[i, rw].Value.ToString() != "")
-                    //{
-                    //    (*pColorBuf)[i][rw] = versionNumber;
-                    //}
-                }
-            }
-
-            // 範囲末尾の不要領域を削除（空白にする）
-            Rect r = new Rect(0, setting.RowLength - Count - 1, setting.ColLength, Count);
-            deleteRect(r);
-
-            isFirstEdit = true;
+            IList<CellWriteEntry> writes = SheetRowEditCalculator.CreateDeleteRows(
+                GetSheetRowCount(), GetSheetColumnCount(), Row, Count,
+                delegate(int row, int column) { return GetCellValue(column, row); });
+            ApplyRowEdit("行の削除", writes);
 
         }
 
         //----------------------------------------------------------------------------------------
+        // 中抜き・切り貼り領域の再計算
         // @param isInsert = true  : 挿入計算
         // @param isInsert = false : 削除計算
         // @param top              : 対象範囲の先頭
@@ -1105,6 +932,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 切り貼り領域の再計算
         // @param isInsert = true  : 挿入計算
         // @param isInsert = false : 削除計算
         // @param top              : 対象範囲の先頭
@@ -1144,6 +972,7 @@ namespace AEIOU
         }
 
         //---------------------------------------------------------------------------
+        // カーソル移動量の計算 (中抜き範囲補正付き)
         private int cursorMoveWithNakaNuki()
         {
             int  cur;           // カーソル位置
@@ -1181,466 +1010,82 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
-        // フレーム表示文字列の生成
-        private String frmToSheet(int frm)
-        {
-            String Time = "";
-            int addFrame = 0;
-            int localFrm = 0;
-            bool isAddRange = false;
-
-            //切り貼りフレームのカウント
-            foreach (Range r in addRange)
-            {
-                //切り貼りコマ数の積算
-                if (r.Top <= frm)
-                {
-                    addFrame += (r.Bottom - r.Top + 1);
-                }
-
-                //切り貼り範囲のチェック
-                if (r.Top <= frm && r.Bottom >= frm)
-                {
-                    //範囲内だったら、切り貼り内ローカルのコマ数を計算
-                    // ※また、フレーム表示は１～ なので更に＋１
-                    isAddRange = true;
-                    localFrm = (frm - r.Top) + 1;
-                }
-            }
-
-            // カレントフレームに、切り貼り分を加味
-            // ※また、フレーム表示は１～ なので更に＋１
-            frm = (frm - addFrame) + 1;
-
-            // 24fps
-            if (setting.Fps == 24)
-            {
-                if (isAddRange)
-                {
-                    // 付けたしフレーム表示処理
-                    // フレーム計算(Page + f)
-                    int frm_p = 0;  //ページ数は0
-                    int frm_f = (localFrm - 1) % (setting.SheetSec * 24);
-
-                    if (((localFrm - 1) % 12) == 0)
-                    {
-                        if (frm_p < 10) Time = "0" + frm_p.ToString() + '/';
-                        else Time = frm_p.ToString() + '/';
-                    }
-                    else
-                    {
-                        Time = "     ";
-                    }
-
-                    if ((frm_f + 1) < 10) Time += "0" + (frm_f + 1).ToString();
-                    else Time += (frm_f + 1).ToString();
-
-                }
-                else
-                {
-                    //通常フレーム表示処理
-                    // フレーム計算(Page + f)
-                    int frm_p = (frm - 1) / (setting.SheetSec * setting.Fps) + 1;    //ページ数は１から
-                    int frm_f = (frm - 1) % (setting.SheetSec * setting.Fps);
-
-                    if (((frm - 1) % 12) == 0)
-                    {
-                        if (frm_p < 10) Time = "0" + frm_p.ToString() + '/';
-                        else Time = frm_p.ToString() + '/';
-                    }
-                    else
-                    {
-                        Time = "     ";
-                    }
-
-                    if ((frm_f + 1) < 10) Time += "0" + (frm_f + 1).ToString();
-                    else Time += (frm_f + 1).ToString();
-                }
-            }
-
-            // 1 & 30fps
-            if ((setting.Fps == 1) || (setting.Fps == 30))
-            {
-                if (isAddRange)
-                {
-                    // 付けたしフレーム表示処理
-                    // フレーム計算(Page + f)
-                    int frm_p = 0;  //ページ数は0
-                    int frm_f = (localFrm - 1) % (setting.SheetSec * setting.Fps);
-
-                    if (((localFrm - 1) % 15) == 0)
-                    {
-                        if (frm_p < 10) Time = "0" + frm_p.ToString() + '/';
-                        else Time = frm_p.ToString() + '/';
-                    }
-                    else
-                    {
-                        Time = "     ";
-                    }
-
-                    if ((frm_f + 1) < 10) Time += "0" + (frm_f + 1).ToString();
-                    else Time += (frm_f + 1).ToString();
-
-                }
-                else
-                {
-                    //通常フレーム表示処理
-
-                    // フレーム計算(Page + f)
-                    int frm_p = (frm - 1) / (setting.SheetSec * setting.Fps) + 1;    //ページ数は１から
-                    int frm_f = (frm - 1) % (setting.SheetSec * setting.Fps);
-
-                    if (((frm - 1) % 15) == 0)
-                    {
-                        if (frm_p < 10) Time = "0" + frm_p.ToString() + '/';
-                        else Time = frm_p.ToString() + '/';
-                    }
-                    else
-                    {
-                        Time = "     ";
-                    }
-
-                    if ((frm_f + 1) < 10) Time += "0" + (frm_f + 1).ToString();
-                    else Time += (frm_f + 1).ToString();
-                }
-            }
-
-            return Time;
-        }
-
-        //----------------------------------------------------------------------------------------
         // 基準線描画位置の計算
         private SheetBorder calcBorderState(DataGridViewCellPaintingEventArgs e)
         {
-            SheetBorder retValue = SheetBorder.None;
-            bool bHariFirst = false;
-            int addFrame = 0;
-
-            // 切り貼りフレーム数のカウント
-            {
-                // 先頭フレーム前の切り貼り有無
-                if(addRange.Count > 0)
-                {
-                    if(addRange[0].Top == 0)
-                    {
-                        //有り
-                        bHariFirst = true;
-                    }
-                }
-
-                // 追加のコマ数を数える
-                foreach(Range range in addRange)
-                {
-                    if(range.Top <= e.RowIndex)
-                    {
-                        addFrame += (range.Bottom - range.Top + 1);
-                    }
-                }
-            }
-
-            // [12],24フレーム毎に基準線を引く
-            // (１シート毎に基準線を引く：ページ線)
-            int r = e.RowIndex - addFrame + 1;
-            if (r < 1) r = e.RowIndex + 1;
-            if (setting.Fps == 24 && e.ColumnIndex >= 0)
-            {
-                int sheetline = setting.SheetDivide;
-                if ((((r % sheetline) == 0) && (r != 0)) || ((r == addFrame) && ((e.RowIndex + 1) - addFrame == 0) && (addFrame != 0) && (r != 0)))
-                {
-                    if ((r % 24) == 0)
-                    {
-                        //１秒毎の基準線を描画
-                        retValue = SheetBorder.EverySec;
-                    }
-                    else
-                    {
-                        //ｎコマ毎の基準線を描画
-                        retValue = SheetBorder.EveryNFrames;
-                    }
-
-                    if ((r % (setting.SheetSec * setting.Fps)) == 0 || ((e.RowIndex + 1) == addFrame) && bHariFirst == true)
-                    {
-                        //シート毎の基準線を描画
-                        retValue = SheetBorder.EverySheet;
-                    }
-                }
-            }
-
-            // 1 & 30fps
-            if (((setting.Fps == 1) || (setting.Fps == 30)) && e.ColumnIndex >= 0)
-            {
-                // 15,30フレーム毎に基準線を引く
-                // (１シート毎に基準線を引く：ページ線)
-                if ((((r % 15) == 0) && (r != 0)) || ((r == addFrame) && ((e.RowIndex + 1) - addFrame == 0) && (addFrame != 0) && (r != 0)))
-                {
-                    if ((r % 30) == 0)
-                    {
-                        //１秒毎の基準線を描画
-                        retValue = SheetBorder.EverySec;
-                    }
-                    else
-                    {
-                        //ｎコマ毎の基準線を描画
-                        retValue = SheetBorder.EveryNFrames;
-                    }
-
-                    if ((r % (setting.SheetSec * setting.Fps)) == 0 || ((e.RowIndex + 1) == addFrame) && bHariFirst == true)
-                    {
-                        //シート毎の基準線を描画
-                        retValue = SheetBorder.EverySheet;
-                    }
-                }
-            }
-            return retValue;
+            return gridBorderStateCalculator.CalcBorderState(e, addRange);
         }
 
         //----------------------------------------------------------------------------------------
         // フレーム数 描画
         private void drawFrameNumber(DataGridViewCellPaintingEventArgs e)
         {
-            // 背景塗り
-            using (Brush backColorBrush = new SolidBrush(gridPalette.Header))
-            {
-                e.Graphics.FillRectangle(backColorBrush, e.CellBounds);
-            }
-
-            //範囲を取得
-            Rectangle _rect = e.CellBounds;
-            _rect.Inflate(-2, -2);
-            //文字列を描画
-            String value = "";
-            if(setting.IsDisplayFrameNumber)
-            {
-                // フレーム数 表示
-                value = (e.RowIndex + setting.FirstFrame).ToString();
-            }
-            else
-            {
-                // シート/コマ数 表示
-                value = frmToSheet(e.RowIndex);
-            }
-            TextRenderer.DrawText(
-                e.Graphics,
-                value,
-                e.CellStyle.Font,
-                _rect,
-                e.CellStyle.ForeColor,
-                TextFormatFlags.Right | TextFormatFlags.VerticalCenter);
-
-            //背景(及びヘッダー部の三角カーソル)以外を描画して貰う
-            DataGridViewPaintParts _paintParts =
-                e.PaintParts & ~DataGridViewPaintParts.Background;
-            //_paintParts &= ~DataGridViewPaintParts.ContentBackground;
-            //残りの描画を要求
-            e.Paint(e.ClipBounds, _paintParts);
-
-            //描画完了の通知
-            e.Handled = true;
+            gridFrameHeaderPainter.DrawHeader(
+                e,
+                gridPalette.Header,
+                setting.IsDisplayFrameNumber,
+                setting.FirstFrame,
+                addRange);
         }
 
         //----------------------------------------------------------------------------------------
-        // タイミング継続か否かの確認
+        // タイミング継続か否かの確認（事前計算済み結果の参照のみ）
         private bool checkContinuty(int X, int Y)
         {
-            // 遡って状態を確認
-            for (int i = Y; i >= 0; i--)
-            {
-                // 空白は無視、カラセルを見付けたら falseを返す
-                if (dataGridView1[X, i].Value.ToString() == "") continue;
-                if (dataGridView1[X, i].Value.ToString() == setting.KaraCell) return false;
+            return continuityStateService != null &&
+                   continuityStateService.GetContinuityFlag(X, Y);
+        }
 
-                // タイミングの入力を見付けたら trueを返す
-                return true;
+        //----------------------------------------------------------------------------------------
+        // セルの値が変化した際の処理
+        private void OnGridViewManagerCellValueChanged(int col, int row, string value)
+        {
+            if (continuityStateService == null)
+            {
+                return;
             }
 
-            return false;
+            if (col < 0 || col >= GetSheetColumnCount())
+            {
+                return;
+            }
+
+            continuityStateService.RecalculateColumn(col, GetSheetRowCount());
         }
 
         //----------------------------------------------------------------------------------------
         // 各セルの描画
         private void dataGridView1_CellPainting(object sender, DataGridViewCellPaintingEventArgs e)
         {
-            // (仮)フレーム数の表示 [ここから]------------------------------------------------------------
-            if (e.ColumnIndex == -1)
+            // フレーム数の表示 ------------------------------------------------------------
+            if (gridCellRenderer.TryPaintRowHeader(e, drawFrameNumber))
             {
-                if (e.RowIndex < 0) return; // フレーム数表示列の最上段の場合には、描画処理を一切行わない
-
-                //フレーム数の描画
-                // ※フレーム数を表示するセルに対応するセルが存在しない為、TimingCellの描画はできない
-                // ※また、setting情報を丸ごとTimingCellの描画に投げるのも微妙なのでとりあえずここで描画
-                drawFrameNumber(e);
                 return;
             }
-            // (仮)フレーム数の表示 [ここまで]------------------------------------------------------------
-
-            // セルの使用状態(未入力/入力済) 評価
-            bool bUsed = (aryCellUsedCount[e.ColumnIndex] > 0) ? true : false;
-
-            // アクティブセル(カーソル列か否か) 評価
-            bool bActive = (e.ColumnIndex == dataGridView1.CurrentCell.ColumnIndex) ? true : false;
 
             // 継続記号 評価
             bool bLine = checkContinuty(e.ColumnIndex, e.RowIndex);
-
-            // 切り貼りフレーム数のカウント＆先頭フレームへの切り貼り有無 評価
-
-            // 中抜き 評価
-            bool bNuki = false;
-            foreach (Range nuki in delRange)
-                if (nuki.Top <= e.RowIndex && nuki.Bottom >= e.RowIndex)
-                    bNuki = true;
-
-            // 切り貼り 評価
-            bool bKiribari = false;
-            foreach (Range kiribari in addRange)
-                if (kiribari.Top <= e.RowIndex && kiribari.Bottom >= e.RowIndex)
-                    bKiribari = true;
-
-            // 背景色の設定
-            Color bgColor = new Color();
-            if (bNuki)
-            {
-                // "中抜き"の色設定
-                bgColor = gridPalette.Nakanuki;
-            }
-            else if (bKiribari)
-            {
-                // "切り貼り"の色設定
-                bgColor = gridPalette.Harikomi;
-            }
-            else if (e.ColumnIndex == -1)
-            {
-                // "Frames"列の色設定
-                bgColor = gridPalette.Header;
-            }
-            else
-            {
-                // 各セルの色設定
-                switch (dataGridView1.Columns[e.ColumnIndex].DisplayIndex % 2)
-                {
-                    case 0:  //偶数列
-                        // カーソル行の場合はアクティブ色
-                        if (bActive) bgColor = gridPalette.BgCell1A;
-                        else
-                        {
-                            // 入力済か否かで、色分け
-                            bgColor = (bUsed) ? gridPalette.BgCell1R : gridPalette.BgCell1;
-                        }
-                        break;
-                    case 1:  //奇数列
-                        // カーソル行の場合はアクティブ色
-                        if (bActive) bgColor = gridPalette.BgCell2A;
-                        else
-                        {
-                            // 入力済か否かで、色分け
-                            bgColor = (bUsed) ? gridPalette.BgCell2R : gridPalette.BgCell2;
-                        }
-                        break;
-                }
-            }
-
-            // 選択チェック
-            bool bSelected = false;
-            if ((e.PaintParts & DataGridViewPaintParts.SelectionBackground) ==
-                    DataGridViewPaintParts.SelectionBackground &&
-                (e.State & DataGridViewElementStates.Selected) ==
-                    DataGridViewElementStates.Selected)
-            {
-                // 選択セル
-                bSelected = true;
-            }
-
-            // ドラッグ中の選択元 領域チェック
-            bool bDragSource = false;
-            {
-                Rect rect = selectRange;
-                if (isRectDrag &&
-                    (rect.Top <= e.RowIndex && rect.Bottom >= e.RowIndex &&
-                    rect.Left <= e.ColumnIndex && rect.Right >= e.ColumnIndex))
-                {
-                    // ドラッグ中の選択元セル
-                    bDragSource = true;
-                }
-            }
-
-            // ドラッグ中の移動先 領域チェック
-            bool bMovingRange = false;
-            if (isRectDrag)
-            {
-                // 移動先範囲のチェック
-                Point offset = new Point(mouseDownPoint.X - selectRange.X, mouseDownPoint.Y - selectRange.Y);
-                int col = dataGridView1.CurrentCell.ColumnIndex;
-                int row = dataGridView1.CurrentCell.RowIndex;
-                int w = selectRange.Width - 1;
-                int h = selectRange.Height - 1;
-                if (((col - offset.X) > e.ColumnIndex) ||
-                    ((col + w - offset.X) < e.ColumnIndex) ||
-                    ((row - offset.Y) > e.RowIndex) ||
-                    ((row + h - offset.Y) < e.RowIndex))
-                {
-                }
-                else
-                {
-                    // ドラッグ中の移動先セル
-                    bMovingRange = true;
-                }
-            }
-
-            // ドラッグ中か否かで、選択表示処理を分ける
-            if (isRectDrag)
-            {
-                // ドラッグ時
-                if (bMovingRange)
-                {
-                    // 選択色に設定
-                    bgColor = gridPalette.Selected;
-                }
-                else if (bDragSource)
-                {
-                    // ドラッグ中選択元色に設定
-                    bgColor = Color.DarkGray;
-                }
-            }
-            else
-            {
-                // 非ドラッグ時
-                if (bSelected)
-                {
-                    // 選択色に設定
-                    bgColor = gridPalette.Selected;
-                }
-            }
+            Color bgColor = gridCellStyleResolver.ResolveBackColor(
+                dataGridView1,
+                e,
+                gridPalette,
+                aryCellUsedCount,
+                delRange,
+                addRange,
+                isRectDrag,
+                selectRange,
+                mouseDownPoint);
 
             //背景色を設定
-            e.CellStyle.BackColor = bgColor;
+            gridCellRenderer.ApplyBackColor(e, bgColor);
 
             //値の取得範囲を制限
             //※ヘッダー部で値取得すると、中身がnullの為に例外が発生する
             if (e.RowIndex >= 0 && e.ColumnIndex >= 0)
             {   // セルのタイミング入力部分
-                String str = dataGridView1[e.ColumnIndex, e.RowIndex].Value.ToString();
-
-                //基準線描画位置の計算
-                (dataGridView1[e.ColumnIndex, e.RowIndex] as TimingCell).BorderState = calcBorderState(e);
-
-                // カラセル(×印)
-                if (str == setting.KaraCell)
-                {
-                    (dataGridView1[e.ColumnIndex, e.RowIndex] as TimingCell).IsKaraCell = true;
-                }
-                else
-                {
-                    (dataGridView1[e.ColumnIndex, e.RowIndex] as TimingCell).IsKaraCell = false;
-                }
-                // 継続記号
-                if (str == "" && bLine)
-                {
-                    (dataGridView1[e.ColumnIndex, e.RowIndex] as TimingCell).IsContinuousLine = true;
-                }
-                else
-                {
-                    (dataGridView1[e.ColumnIndex, e.RowIndex] as TimingCell).IsContinuousLine = false;
-                }
+                //基準線描画位置の計算と TimingCell 状態更新
+                SheetBorder borderState = calcBorderState(e);
+                gridCellRenderer.ApplyTimingCellState(e, borderState, bLine);
 
             }
             else
@@ -1649,48 +1094,495 @@ namespace AEIOU
             }
 
             //描画を要求
-            e.Paint(e.ClipBounds, e.PaintParts);
+            gridCellRenderer.PaintCell(e);
 
-            //描画完了の通知
-            e.Handled = true;
+        }
 
+        //----------------------------------------------------------------------------------------
+        // セルの値の取得
+        private void dataGridView1_CellValueNeeded(object sender, DataGridViewCellValueEventArgs e)
+        {
+            if (!IsValidCellIndex(e.ColumnIndex, e.RowIndex))
+            {
+                e.Value = string.Empty;
+                return;
+            }
+
+            string value;
+            e.Value = gridViewManager.TryHandleCellValueNeeded(e.ColumnIndex, e.RowIndex, out value)
+                ? value ?? string.Empty
+                : string.Empty;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // セルの値の設定
+        private void dataGridView1_CellValuePushed(object sender, DataGridViewCellValueEventArgs e)
+        {
+            if (!IsValidCellIndex(e.ColumnIndex, e.RowIndex))
+            {
+                return;
+            }
+
+            gridViewManager.PushCellValue(e.ColumnIndex, e.RowIndex, e.Value);
+
+            if (continuityStateService != null)
+            {
+                continuityStateService.RecalculateColumn(e.ColumnIndex, GetSheetRowCount());
+            }
         }
 
         //----------------------------------------------------------------------------------------
         // 選択範囲の取得
         private Rect getSelectedRect()
         {
-            Rect r = new Rect(setting.ColLength,setting.RowLength,0,0);
-            int Count = dataGridView1.SelectedCells.Count;
+            return gridSelectionService.GetSelectedRect();
+        }
 
-            // 選択範囲を取得
-            for (int i = 0; i < Count; i++)
+        private string GetCellValue(int col, int row)
+        {
+            string value;
+            if (!TryGetCellValue(col, row, out value))
             {
-                int rowIndex = dataGridView1.SelectedCells[i].RowIndex;
-                int colIndex = dataGridView1.SelectedCells[i].ColumnIndex;
-                if (rowIndex < r.Y)
+                return string.Empty;
+            }
+
+            return value ?? string.Empty;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // セルの値の取得 (失敗理由も返す版)
+        private bool TryGetCellValue(int col, int row, out string value, out string failureReason)
+        {
+            if (IsGridViewManagerBoundToCurrentModel())
+            {
+                return gridViewManager.TryGetCellValue(col, row, out value, out failureReason);
+            }
+
+            if (timingSheetModel == null)
+            {
+                value = string.Empty;
+                failureReason = "ModelNotInitialized";
+                return false;
+            }
+
+            return timingSheetModel.TryGetCell(col, row, out value, out failureReason);
+        }
+
+        //----------------------------------------------------------------------------------------
+        // セルの値の取得 (失敗理由は不要な簡易版)
+        private bool TryGetCellValue(int col, int row, out string value)
+        {
+            string failureReason;
+            return TryGetCellValue(col, row, out value, out failureReason);
+        }
+
+        //----------------------------------------------------------------------------------------
+        // セルの値の設定
+        private bool IsValidCellIndex(int col, int row)
+        {
+            return col >= 0 &&
+                   row >= 0 &&
+                   col < GetSheetColumnCount() &&
+                   row < GetSheetRowCount();
+        }
+
+        //----------------------------------------------------------------------------------------
+        // セルの値の設定
+        private void SetCellValue(int col, int row, string value)
+        {
+            if (!IsValidCellIndex(col, row))
+            {
+                return;
+            }
+
+            if (IsGridViewManagerBoundToCurrentModel())
+            {
+                gridViewManager.SetCellValue(col, row, value);
+            }
+            else
+            {
+                string normalizedValue = value ?? "";
+                timingSheetModel.SetCell(col, row, normalizedValue);
+                if (gridViewManager != null)
                 {
-                    r.Y = rowIndex;
-                }
-                if (colIndex < r.X)
-                {
-                    r.X = colIndex;
-                }
-                if (rowIndex > r.Height)
-                {
-                    r.Height = rowIndex;
-                }
-                if (colIndex > r.Width)
-                {
-                    r.Width = colIndex;
+                    gridViewManager.SetCellDisplayValue(col, row, normalizedValue);
                 }
             }
 
-            // 高さと幅を計算
-            r.Height = r.Height - r.Y + 1;
-            r.Width = r.Width - r.X + 1;
+            if (continuityStateService != null)
+            {
+                continuityStateService.RecalculateColumn(col, GetSheetRowCount());
+            }
+        }
 
-            return r;
+        //----------------------------------------------------------------------------------------
+        // セルの値の設定（セル値が変化した場合のみ）
+        private bool IsGridViewManagerBoundToCurrentModel()
+        {
+            return gridViewManager != null &&
+                   timingSheetModel != null &&
+                   gridViewManager.Model == timingSheetModel;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // シートの列数の取得
+        private int GetSheetColumnCount()
+        {
+            if (IsGridViewManagerBoundToCurrentModel())
+            {
+                return gridViewManager.ColumnCount;
+            }
+
+            return setting.ColLength;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // シートの行数の取得
+        private int GetSheetRowCount()
+        {
+            if (IsGridViewManagerBoundToCurrentModel())
+            {
+                return gridViewManager.RowCount;
+            }
+
+            return setting.RowLength;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // ヘッダの値の取得・設定
+        private string GetHeaderValue(int col)
+        {
+            if (IsGridViewManagerBoundToCurrentModel())
+            {
+                return gridViewManager.GetHeaderValue(col);
+            }
+
+            return timingSheetModel.GetHeader(col);
+        }
+
+        //----------------------------------------------------------------------------------------
+        // ヘッダの値の設定
+        private void SetHeaderValue(int col, string value)
+        {
+            if (IsGridViewManagerBoundToCurrentModel())
+            {
+                gridViewManager.SetHeaderValue(col, value);
+            }
+            else
+            {
+                string normalizedValue = value ?? "";
+                timingSheetModel.SetHeader(col, normalizedValue);
+                if (gridViewManager != null)
+                {
+                    gridViewManager.SetHeaderDisplayValue(col, normalizedValue);
+                }
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 列編集 calculator が作成した snapshot を順番どおり反映する
+        private void ApplyColumnWrites(IList<ColumnWriteEntry> writes, int rowCount)
+        {
+            foreach (ColumnWriteEntry write in writes)
+            {
+                aryCellUsedCount[write.Column] = write.UsedCount;
+                SetHeaderValue(write.Column, write.Header);
+                for (int row = 0; row < rowCount; row++)
+                {
+                    SetCellValue(write.Column, row, write.GetValue(row));
+                }
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 複数セルへの書き込みをグループ化して実行する
+        private void ExecuteWriteGroup(string groupName, Action action)
+        {
+            gridViewManager.BeginBatchUpdate();
+            gridViewManager.BeginGroup(groupName);
+            try
+            {
+                action();
+            }
+            finally
+            {
+                try
+                {
+                    gridViewManager.EndGroup();
+                }
+                finally
+                {
+                    gridViewManager.EndBatchUpdate();
+                }
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
+        // SetValueOperation の引数順（row, col, value）を明示して、
+        // 既存コードの Col/Row 変数名との取り違えを防ぐ。
+        private void QueueCellWrite(int row, int col, string value)
+        {
+            var operation = new SetValueOperation(row, col, value);
+            gridViewManager.ExecuteOperation(operation);
+        }
+
+        //----------------------------------------------------------------------------------------
+        // セルの値が変化した場合のみ、値を設定する
+        private bool SetCellValueIfChanged(int col, int row, string value)
+        {
+            string normalizedValue = value ?? "";
+            if (GetCellValue(col, row) == normalizedValue)
+            {
+                return false;
+            }
+
+            SetCellValue(col, row, normalizedValue);
+            return true;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 複数セルへの書き込みをグループ化して実行する
+        private void ApplyCellWrites(string groupName, IList<CellWriteEntry> writes)
+        {
+            if (writes == null)
+            {
+                throw new ArgumentNullException("writes");
+            }
+            if (writes.Count == 0)
+            {
+                return;
+            }
+
+            // Undo group を開く前に全件を検証し、不正な一覧の部分適用を防ぐ。
+            CellWriteBatch.Validate(writes, GetSheetRowCount(), GetSheetColumnCount());
+
+            ExecuteWriteGroup(groupName, delegate
+            {
+                QueueCellWrites(writes);
+            });
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 行編集の計算後は、検証済みの一覧を1 Undo group で適用してから
+        // isFirstEdit と継続記号の表示をまとめて更新する。
+        private void ApplyRowEdit(string groupName, IList<CellWriteEntry> writes)
+        {
+            ApplyCellWrites(groupName, writes);
+            FinishWriteOperation(true);
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 複数セルへの書き込みをキューに追加する
+        private void QueueCellWrites(IList<CellWriteEntry> writes)
+        {
+            if (writes == null || writes.Count == 0)
+            {
+                return;
+            }
+
+            foreach (CellWriteEntry write in writes)
+            {
+                QueueCellWrite(row: write.Row, col: write.Col, value: write.Value);
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 書き込み操作の終了処理
+        private void FinishWriteOperation(bool shouldInvalidate)
+        {
+            isFirstEdit = true;
+
+            if (shouldInvalidate)
+            {
+                // 描画更新(継続記号の更新の為)
+                dataGridView1.Invalidate();
+            }
+        }
+
+        private AutomationRequest CreateAutomationRequest(IDictionary<string, string> parameters)
+        {
+            List<AutomationCell> cells = new List<AutomationCell>();
+            string failureReason;
+            for (int column = selectRange.Left; column <= selectRange.Right; column++)
+                for (int row = selectRange.Top; row <= selectRange.Bottom; row++)
+                {
+                    string value;
+                    if (!TryGetCellValue(column, row, out value, out failureReason)) value = String.Empty;
+                    cells.Add(new AutomationCell(row, column, value));
+                }
+
+            return new AutomationRequest(GetSheetRowCount(), GetSheetColumnCount(), automationGeneration,
+                new AutomationSelection(selectRange.Top, selectRange.Left, selectRange.Height, selectRange.Width),
+                cells, parameters, setting.KaraCell);
+        }
+
+        private void ExecuteAutomationCommand(string commandId, IDictionary<string, string> parameters)
+        {
+            AutomationHostResult result = automationHost.Execute(commandId, CreateAutomationRequest(parameters), this);
+            if (!result.Succeeded)
+            {
+                MessageBox.Show(result.Error);
+                return;
+            }
+            FinishWriteOperation(true);
+        }
+
+        private void LoadAutomationExtensions()
+        {
+            string applicationDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            AutomationExtensionLoadResult loadResult = new AutomationExtensionLoader().Load(
+                Path.Combine(applicationDirectory, "Extensions"), automationRegistry);
+            AutomationExtensionLoader.AppendDiagnostics(
+                Path.Combine(applicationDirectory, "automation-extensions.log"), loadResult.Diagnostics);
+            if (loadResult.Commands.Count == 0) return;
+
+            ToolStripMenuItem extensionsMenu = new ToolStripMenuItem("拡張自動処理");
+            foreach (AutomationCommandDescriptor descriptor in loadResult.Descriptors)
+            {
+                ToolStripMenuItem item = new ToolStripMenuItem(descriptor.DisplayName);
+                item.Tag = descriptor.Id;
+                item.Click += externalAutomationToolStripMenuItem_Click;
+                extensionsMenu.DropDownItems.Add(item);
+            }
+            int insertionIndex = contextMenuStrip1.Items.IndexOf(fourArithmeticOperationToolStripMenuItem) + 1;
+            contextMenuStrip1.Items.Insert(insertionIndex, extensionsMenu);
+        }
+
+        private void externalAutomationToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ToolStripMenuItem item = sender as ToolStripMenuItem;
+            AutomationCommandDescriptor descriptor;
+            if (item == null || !automationRegistry.TryGetDescriptor((string)item.Tag, out descriptor)) return;
+            IDictionary<string, string> parameters;
+            if (!TryCollectAutomationParameters(descriptor, out parameters)) return;
+            ExecuteAutomationCommand(descriptor.Id, parameters);
+        }
+
+        private bool TryCollectAutomationParameters(AutomationCommandDescriptor descriptor,
+            out IDictionary<string, string> parameters)
+        {
+            parameters = null;
+            Dictionary<string, Control> inputs = new Dictionary<string, Control>(StringComparer.Ordinal);
+            using (Form dialog = new Form())
+            using (TableLayoutPanel layout = new TableLayoutPanel())
+            {
+                dialog.Text = descriptor.DisplayName;
+                dialog.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dialog.StartPosition = FormStartPosition.CenterParent;
+                dialog.MinimizeBox = false;
+                dialog.MaximizeBox = false;
+                dialog.AutoSize = true;
+                dialog.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+                layout.AutoSize = true;
+                layout.ColumnCount = 2;
+                layout.Padding = new Padding(8);
+                dialog.Controls.Add(layout);
+
+                int row = 0;
+                foreach (AutomationParameterDefinition definition in descriptor.Parameters)
+                {
+                    Label label = new Label();
+                    label.Text = definition.DisplayName;
+                    label.AutoSize = true;
+                    label.Anchor = AnchorStyles.Left;
+                    Control input;
+                    if (definition.Type == AutomationParameterType.Boolean)
+                    {
+                        CheckBox checkBox = new CheckBox();
+                        bool checkedValue;
+                        Boolean.TryParse(definition.DefaultValue, out checkedValue);
+                        checkBox.Checked = checkedValue;
+                        input = checkBox;
+                    }
+                    else if (definition.Type == AutomationParameterType.Choice)
+                    {
+                        ComboBox comboBox = new ComboBox();
+                        comboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+                        foreach (string choice in definition.Choices) comboBox.Items.Add(choice);
+                        int selected = comboBox.Items.IndexOf(definition.DefaultValue);
+                        comboBox.SelectedIndex = selected >= 0 ? selected : 0;
+                        input = comboBox;
+                    }
+                    else
+                    {
+                        TextBox textBox = new TextBox();
+                        textBox.Text = definition.DefaultValue ?? String.Empty;
+                        textBox.Width = 180;
+                        input = textBox;
+                    }
+                    layout.Controls.Add(label, 0, row);
+                    layout.Controls.Add(input, 1, row++);
+                    inputs.Add(definition.Id, input);
+                }
+
+                FlowLayoutPanel buttons = new FlowLayoutPanel();
+                buttons.AutoSize = true;
+                buttons.FlowDirection = FlowDirection.RightToLeft;
+                Button ok = new Button();
+                ok.Text = "OK";
+                ok.DialogResult = DialogResult.OK;
+                Button cancel = new Button();
+                cancel.Text = "キャンセル";
+                cancel.DialogResult = DialogResult.Cancel;
+                buttons.Controls.Add(ok);
+                buttons.Controls.Add(cancel);
+                layout.Controls.Add(buttons, 0, row);
+                layout.SetColumnSpan(buttons, 2);
+                dialog.AcceptButton = ok;
+                dialog.CancelButton = cancel;
+                if (dialog.ShowDialog(owner) != DialogResult.OK) return false;
+
+                Dictionary<string, string> collected = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (AutomationParameterDefinition definition in descriptor.Parameters)
+                {
+                    Control input = inputs[definition.Id];
+                    CheckBox checkBox = input as CheckBox;
+                    ComboBox comboBox = input as ComboBox;
+                    collected.Add(definition.Id, checkBox != null ? checkBox.Checked.ToString() :
+                        comboBox != null ? (string)comboBox.SelectedItem : input.Text);
+                }
+                parameters = collected;
+                return true;
+            }
+        }
+
+        public bool TryApply(long expectedGeneration, IList<AutomationChange> changes, string operationName)
+        {
+            if (expectedGeneration != automationGeneration) return false;
+            List<CellWriteEntry> writes = new List<CellWriteEntry>();
+            foreach (AutomationChange change in changes)
+                writes.Add(new CellWriteEntry(change.Row, change.Column, change.Value));
+            ApplyCellWrites(operationName, writes);
+            automationGeneration++;
+            return true;
+        }
+
+        public bool TryReplace(long expectedGeneration, object previousApplication,
+            IList<AutomationChange> changes, string operationName, out object application)
+        {
+            application = null;
+            if (expectedGeneration != automationGeneration) return false;
+            if (previousApplication != null)
+            {
+                GridViewOperation previousOperation = previousApplication as GridViewOperation;
+                if (previousOperation == null || !gridViewManager.TryUndo(previousOperation)) return false;
+            }
+
+            OperationGroup group = new OperationGroup(operationName);
+            foreach (AutomationChange change in changes)
+                group.AddOperation(new SetValueOperation(change.Row, change.Column, change.Value));
+            gridViewManager.BeginBatchUpdate();
+            try
+            {
+                gridViewManager.ExecuteOperation(group);
+            }
+            finally
+            {
+                gridViewManager.EndBatchUpdate();
+            }
+            application = group;
+            automationGeneration++;
+            return true;
         }
 
         //----------------------------------------------------------------------------------------
@@ -1700,10 +1592,13 @@ namespace AEIOU
             bool val = false;
 
             // チェック範囲は X,Y共に 0以上
-            if(X >= 0 && Y >= 0)
+            int columnCount = GetSheetColumnCount();
+            int rowCount = GetSheetRowCount();
+            if ((X >= 0 && X < columnCount) &&
+                (Y >= 0 && Y < rowCount))
             {
                 // 値が入っていたら trueを返す
-                String str = dataGridView1[X, Y].Value.ToString();
+                String str = GetCellValue(X, Y);
                 if (str.Length > 0)
                     val = true;
             }
@@ -1711,33 +1606,180 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
-        // 画面2/3より下に移動した場合の画面送り
-        private void scrollingForward()
+        // バックスペースキーによる削除処理
+        private bool deleteRect_with_backspace(bool isCellEdit)
         {
-            Rectangle client = dataGridView1.ClientRectangle;               //dataGridViewの表示範囲
-            int height = dataGridView1.Rows[0].Height;                      //１行分の高さ
-            int rowTop = dataGridView1.FirstDisplayedScrollingRowIndex;     //表示最上段の行数
-            int currentRow = dataGridView1.CurrentCell.RowIndex - rowTop;   //表示領域内での上からのインデックス（行）
-            int rowCount = (client.Height - (height - 1)) / height;         //表示行数（完全に表示されているもの）
-            int border = (int)(rowCount * (2.0 / 3.0));                     //閾値となる行数
-            if (border < currentRow)
+            // 選択範囲を取得
+            Rect rect = getSelectedRect();
+            bool isBackward = false;        // 巻き戻し削除になるかどうかのフラグ(default: 巻き戻しなし)
+
+            // カレントセルの内容を確認
+            bool isNoBlank = false;
+            for (int row = rect.Top; row <= rect.Bottom && !isNoBlank; row++)
             {
-                //閾値に食い込んだ分、先に進める
-                int forwardCount = currentRow - border;
-                int top = selectRange.Top + forwardCount;
-                int btm = setting.RowLength - selectRange.Height;
-                // 先頭が 終端-選択幅(垂直方向) を超える場合は 補正する
-                if (top > btm)
+                for (int col = rect.Left; col <= rect.Right; col++)
                 {
-                    //はみ出す場合
-                    dataGridView1.FirstDisplayedScrollingRowIndex = btm;
+                    if (GetCellValue(col, row) != "")
+                    {
+                        isNoBlank = true;
+                        break;
+                    }
                 }
-                else
+            }
+            if (isNoBlank)
+            {
+                // 現在セルに値が入っている場合
+                // （なにもしない）
+
+            }
+            else
+            {
+                // 現在セルに値が入っていない場合
+                // (選択範囲を変更する)
+                for (int i = rect.Y; i >= 0 && !isBackward; i--)
+                    for (int l = rect.Left; l <= rect.Right; l++)
+                    {
+                        // 空白のセルは無視
+                        String str = GetCellValue(l, i);
+                        if (str == "") continue;
+
+                        // 選択範囲をクリア
+                        dataGridView1.ClearSelection();
+
+                        // カーソルのカレント位置を設定
+                        dataGridView1.CurrentCell = dataGridView1[dataGridView1.CurrentCell.ColumnIndex, i];
+
+                        // 新しい選択範囲を設定
+                        for (int j = 0; j < rect.Height; j++)
+                            for (int k = 0; k < rect.Width; k++)
+                                dataGridView1[rect.X + k, i + j].Selected = true;
+
+                        // 範囲を保存
+                        rect.Y = i;
+                        selectRange = rect;
+
+                        // フラグを立てる
+                        isBackward = true;
+                        isNoBlank = true;
+
+                        // 探索を終わる
+                        break;
+                    }
+            }
+
+            if (isNoBlank)
+            {
+                // 現在セルに値が入っている場合
+                // (選択範囲を変更, 入力値はズラす)
+
+                gridViewManager.BeginGroup("削除");
+
+                // rect.Left～rect.Right で回しているため、ループ変数は「選択範囲内の相対位置」ではなく
+                // DataGridView 全体に対する「絶対列インデックス」。
+                // そのため SetValueOperation の列引数は col をそのまま渡す（rect.X + col にはしない）。
+                // 複数列選択でも Left～Right の各列を1回ずつ処理するため、列ずれは発生しない。
+                for (int row = rect.Top; row <= rect.Bottom; row++)
                 {
-                    //はみ出さない場合
-                    dataGridView1.FirstDisplayedScrollingRowIndex += forwardCount;
+                    for (int col = rect.Left; col <= rect.Right; col++)
+                    {
+                        // 空白セルは無視する
+                        String new_value = GetCellValue(col, row);
+                        if (new_value.Length == 0) continue;
+
+                        if (isBackward)
+                        {
+                            //セル内容の消去
+                            new_value = "";
+                            //使用状況を修正
+                            aryCellUsedCount[col]--;
+                        }
+                        else
+                        {
+                            //１桁削る
+                            new_value = new_value.Substring(0, new_value.Length - 1);
+                            isCellEdit = true;
+
+                            // セルの中身が空白になった場合は、使用状況を修正
+                            if (new_value.Length == 0)
+                            {
+                                aryCellUsedCount[col]--;
+                            }
+                        }
+
+                        // アンドゥ情報の記録
+                        var operation = new SetValueOperation(row, col, new_value);
+                        gridViewManager.ExecuteOperation(operation);
+                    }
+
                 }
 
+                gridViewManager.EndGroup();
+
+            }
+
+            // 描画更新(継続記号の更新の為)
+            dataGridView1.Invalidate();
+
+            return isCellEdit;
+
+        }
+
+        //----------------------------------------------------------------------------------------
+        // ショートカットキーの実行
+        private bool tryExecuteShortcut(ToolStripItemCollection items, Keys keyData)
+        {
+            foreach (ToolStripItem item in items)
+            {
+                ToolStripMenuItem menuItem = item as ToolStripMenuItem;
+                if (menuItem == null)
+                {
+                    continue;
+                }
+
+                if (menuItem.Enabled &&
+                    menuItem.ShortcutKeys != Keys.None &&
+                    menuItem.ShortcutKeys == keyData)
+                {
+                    menuItem.PerformClick();
+                    return true;
+                }
+
+                if (menuItem.HasDropDownItems && tryExecuteShortcut(menuItem.DropDownItems, keyData))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // アクティブ列の遷移を無効化
+        private void InvalidateActiveColumnTransition(int previousCol)
+        {
+            if (dataGridView1.CurrentCell == null)
+            {
+                dataGridView1.Invalidate();
+                return;
+            }
+
+            int currentCol = dataGridView1.CurrentCell.ColumnIndex;
+            int maxCol = GetSheetColumnCount() - 1;
+
+            bool previousValid = previousCol >= 0 && previousCol <= maxCol;
+            bool currentValid = currentCol >= 0 && currentCol <= maxCol;
+
+            if (!currentValid)
+            {
+                dataGridView1.Invalidate();
+                return;
+            }
+
+            dataGridView1.InvalidateColumn(currentCol);
+
+            if (previousValid && previousCol != currentCol)
+            {
+                dataGridView1.InvalidateColumn(previousCol);
             }
         }
 
@@ -1745,994 +1787,25 @@ namespace AEIOU
         // KeyDownイベントハンドラ
         private void dataGridView1_KeyDown(object sender, KeyEventArgs e)
         {
-            bool isCellEdit = false;
-            int keyValue = setting.keys.convKey(e.KeyValue, e.Alt, e.Control, e.Shift);
-            switch (keyValue & 0x0ff)
+            int previousCol = (dataGridView1.CurrentCell != null) ? dataGridView1.CurrentCell.ColumnIndex : -1;
+
+            isCellEdit = false; // Reset for this key press
+
+            int keyValue;
+            GridDispatchResult dispatchResult = gridKeyCommandDispatcher.Dispatch(e, contextMenuStrip1.Items, out keyValue);
+            if (dispatchResult == GridDispatchResult.MenuShortcut)
             {
-                case 8:     // BackSpace
-                    {
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-                        bool isBackward = false;        // 巻き戻し削除になるかどうかのフラグ(default: 巻き戻しなし)
-
-                        // カレントセルの内容を確認
-                        bool isNoBlank = false;
-                        for (int i = 0; i < rect.Width; i++)
-                        {
-                            if (dataGridView1[rect.X + i, rect.Y].Value.ToString() != "")
-                            {
-                                isNoBlank = true;
-                                break;
-                            }
-                        }
-                        if(isNoBlank)
-                        {
-                            // 現在セルに値が入っている場合
-                            // （なにもしない）
-
-                        }
-                        else
-                        {
-                            // 現在セルに値が入っていない場合
-                            for (int i = rect.Y; i >= 0 && !isBackward; i--)
-                                for (int l = rect.Left; l <= rect.Right; l++)
-                                {
-                                    // 空のセルは無視
-                                    String str = dataGridView1[l, i].Value.ToString();
-                                    if (str == "") continue;
-
-                                    // 選択範囲をクリア
-                                    dataGridView1.ClearSelection();
-
-                                    // カーソルのカレント位置を設定
-                                    dataGridView1.CurrentCell = dataGridView1[dataGridView1.CurrentCell.ColumnIndex, i];
-
-                                    // 新しい選択範囲を設定
-                                    for (int j = 0; j < rect.Height; j++)
-                                        for (int k = 0; k < rect.Width; k++)
-                                            dataGridView1[rect.X + k, i + j].Selected = true;
-
-                                    // 範囲を保存
-                                    rect.Y = i;
-                                    selectRange = rect;
-
-                                    // フラグを立てる
-                                    isBackward = true;
-                                    isNoBlank = true;
-
-                                    // 探索を終わる
-                                    break;
-                                }
-                        }
-
-                        if (isNoBlank)
-                        {
-                            // 現在セルに値が入っている場合
-
-                            // アンドゥグループの作成
-                            UndoGroup undoGroup = new UndoGroup(
-                                setting.UndoCount++, "削除", UndoOperationTarget.ToGrid);
-                            undoList.Add(undoGroup);
-
-                            for (int i = rect.Left; i <= rect.Right; i++)
-                            {
-                                // 空白セルは無視する
-                                String str = dataGridView1[i, rect.Y].Value.ToString();
-                                if (str.Length == 0) continue;
-
-                                // アンドゥ情報の作成
-                                UndoOperation undo = new UndoOperation(i, rect.Y, str, "");
-
-                                if (isBackward)
-                                {
-                                    //セル内容の消去
-                                    dataGridView1[i, rect.Y].Value = "";
-                                    //使用状況を修正
-                                    aryCellUsedCount[i]--;
-                                }
-                                else
-                                {
-                                    //１桁削る
-                                    str = str.Substring(0, str.Length - 1);
-                                    dataGridView1[i, rect.Y].Value = str;
-                                    isCellEdit = true;
-
-                                    // セルの中身が空白になった場合は、使用状況を修正
-                                    if (str.Length == 0)
-                                    {
-                                        aryCellUsedCount[i]--;
-                                    }
-                                }
-
-                                // アンドゥ情報の記録
-                                undo.NewValue = str;
-                                undoGroup.Operations.Add(undo);
-
-                            }
-
-                            // アンドゥメニュ更新
-                            setUndoText(undoGroup.Title);
-                            // アンドゥ履歴の調整
-                            processUndoLimit();
-                        }
-
-                        // 描画更新(継続記号の更新の為)
-                        dataGridView1.Invalidate();
-                        
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 13:    // Enter
-                    {
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 選択範囲をクリア
-                        dataGridView1.ClearSelection();
-
-                        // 先頭位置の計算(※下端のはみ出しチェック)
-                        int len = cursorMoveWithNakaNuki();
-                        if (len > 0)
-                        {
-                            int top = rect.Y + len;
-                            int btm = setting.RowLength - rect.Height;
-                            top = (top > btm) ? btm : top;  // 先頭が 終端-選択幅(垂直方向) を超える場合は 補正する
-
-                            // カーソルのカレント位置を設定
-                            dataGridView1.CurrentCell = dataGridView1[rect.X, top];
-
-                            // 新しい選択範囲を設定
-                            for (int i = 0; i < rect.Height; i++)
-                                for (int j = 0; j < rect.Width; j++)
-                                    dataGridView1[rect.X + j, top + i].Selected = true;
-
-                            // 範囲を保存
-                            rect.Y = top;
-                            selectRange = rect;
-                        }
-
-                        isFirstEdit = true;
-
-                        // 画面2/3より下に移動した場合の画面送り
-                        scrollingForward();
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 33:    // PageUp
-                    {
-                        // 基準秒数を足し合わせて新しい行数を求める
-                        int moveSize;
-                        if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.CTRLKey))
-                        {
-                            // +Ctrl
-                            moveSize = setting.Fps * setting.SheetSec;
-                        }
-                        else
-                        {
-                            // その他
-                            moveSize = setting.Fps;
-                        }
-
-                        int row = dataGridView1.FirstDisplayedScrollingRowIndex;
-                        int newRow = row - moveSize;
-
-                        // 先頭行を基準フレームにしたいので余りを差し引く
-                        if ((newRow % moveSize) != 0)
-                        {
-                            newRow += moveSize - (newRow % moveSize);
-                        }
-
-                        // 移動可能な範囲ならページ移動
-                        // ※カーソル位置はページ先頭
-                        if (newRow >= 0)
-                        {
-                            dataGridView1.FirstDisplayedScrollingRowIndex = newRow;
-                            dataGridView1.CurrentCell = dataGridView1[dataGridView1.CurrentCell.ColumnIndex, newRow];
-                        }
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 34:    // PageDown
-                    {
-                        // 基準秒数を足し合わせて新しい行数を求める
-                        int moveSize;
-                        if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.CTRLKey))
-                        {
-                            // +Ctrl
-                            moveSize = setting.Fps * setting.SheetSec;
-                        }
-                        else
-                        {
-                            // その他
-                            moveSize = setting.Fps;
-                        }
-
-                        int row = dataGridView1.FirstDisplayedScrollingRowIndex;
-                        int newRow = row + moveSize;
-
-                        // 先頭行を基準フレームにしたいので余りを差し引く
-                        newRow -= newRow % moveSize;
-
-                        // 移動可能な範囲ならページ移動
-                        // ※カーソル位置はページ先頭
-                        if (newRow < setting.RowLength)
-                        {
-                            dataGridView1.FirstDisplayedScrollingRowIndex = newRow;
-                            dataGridView1.CurrentCell = dataGridView1[dataGridView1.CurrentCell.ColumnIndex, newRow];
-                        }
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 36:    // Home
-                    {
-                        // カーソルを先頭フレームに戻す
-                        dataGridView1.CurrentCell = dataGridView1[dataGridView1.CurrentCell.ColumnIndex, 0];
-                        selectRange.X = dataGridView1.CurrentCell.ColumnIndex;
-                        selectRange.Y = 0;
-                        selectRange.Width = 1;
-                        selectRange.Height = 1;
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 37:    // ←
-                    // 選択範囲を縮小
-                    if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.SHIFTKey))
-                    {
-                        // +Shiftの場合
-
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 領域縮小が可能な場合のみ処理する
-                        if (rect.Width > 1)
-                        {
-                            // 範囲を縮小
-                            for (int i = 0; i < rect.Height; i++)
-                                dataGridView1[rect.Right, rect.Y + i].Selected = false;
-
-                            // 範囲を保存
-                            rect.Width--;
-                            selectRange = rect;
-                        }
-
-                    }
-
-                    // 選択範囲単位の移動
-                    if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.None))
-                    {
-                        // 単に ← の場合
-
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 選択範囲をクリア
-                        dataGridView1.ClearSelection();
-
-                        // 先頭位置の計算(※上端のはみ出しチェック)
-                        int top = rect.X - 1;
-                        top = (top < 0) ? 0 : top;      // 先頭が 0を下回る場合は 補正する
-
-                        // カーソルのカレント位置を設定
-                        dataGridView1.CurrentCell = dataGridView1[top, rect.Y];
-
-                        // 新しい選択範囲を設定
-                        for (int i = 0; i < rect.Height; i++)
-                            for (int j = 0; j < rect.Width; j++)
-                                dataGridView1[top + j, rect.Y + i].Selected = true;
-
-                        // 範囲を保存
-                        rect.X = top;
-                        selectRange = rect;
-
-                        // 描画更新(アクティブセルの色分けの為)
-                        dataGridView1.Invalidate();
-                    }
-                    // 処理済みフラグを立てる
-                    e.Handled = true;
-                    break;
-
-                case 38:    //↑
-                    // 選択範囲を縮小
-                    if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.SHIFTKey))
-                    {
-                        // +SHIFT の場合
-
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 領域縮小が可能な場合のみ処理する
-                        if (rect.Height > 1)
-                        {
-                            // 範囲を縮小
-                            for (int j = 0; j < rect.Width; j++)
-                                dataGridView1[rect.X + j, rect.Bottom].Selected = false;
-
-                            // 範囲を保存
-                            rect.Height--;
-                            selectRange = rect;
-                        }
-
-                    }
-
-                    // 選択範囲単位の移動
-                    {
-                        CombinationKeyState state = setting.keys.getShiftBeforeConvertion(keyValue);
-                        if ((state & CombinationKeyState.ALTKey) == 0 &&
-                            (state & CombinationKeyState.SHIFTKey) == 0)
-                        {
-                            // ↑ 又は ALT+↑ の場合
-
-                            // 選択範囲を取得
-                            Rect rect = getSelectedRect();
-
-                            // 選択範囲をクリア
-                            dataGridView1.ClearSelection();
-
-                            // 先頭位置の計算(※上端のはみ出しチェック)
-                            int top;
-                            if((state & CombinationKeyState.CTRLKey) != 0)
-                            {
-                                // +Ctrl時
-                                top = rect.Y - 1;
-                            }
-                            else
-                            {
-                                // ↑のみ
-                                top = rect.Y - rect.Height;
-                            }
-                            top = (top < 0) ? 0 : top;      // 先頭が 0を下回る場合は 補正する
-
-                            // カーソルのカレント位置を設定
-                            dataGridView1.CurrentCell = dataGridView1[rect.X, top];
-
-                            // 新しい選択範囲を設定
-                            for (int i = 0; i < rect.Height; i++)
-                                for (int j = 0; j < rect.Width; j++)
-                                    dataGridView1[rect.X + j, top + i].Selected = true;
-
-                            // 範囲を保存
-                            rect.Y = top;
-                            selectRange = rect;
-
-                        }
-                    }
-
-                    // 処理済みフラグを立てる
-                    e.Handled = true;
-                    break;
-
-                case 39:    // →
-                    // 選択範囲を拡大
-                    if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.SHIFTKey))
-                    {
-                        // + SHIFT の場合
-
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 領域拡大が可能な場合のみ処理する
-                        if ((rect.X + rect.Width) < setting.ColLength)
-                        {
-                            // 範囲を拡大
-                            rect.Width++;
-                            for (int i = 0; i < rect.Height; i++)
-                                dataGridView1[rect.Right, rect.Y + i].Selected = true;
-
-                            // 範囲を保存
-                            selectRange = rect;
-                        }
-
-                    }
-
-                    // 選択範囲単位の移動
-                    if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.None))
-                    {
-                        // 単に → の場合
-
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 選択範囲をクリア
-                        dataGridView1.ClearSelection();
-
-                        // 先頭位置の計算(※上端のはみ出しチェック)
-                        int top = rect.X + 1;
-                        int limit = setting.ColLength - rect.Width;
-                        top = (top > limit) ? limit : top;      // 先頭が 終端-選択幅(水平方向) を超える場合は 補正する
-
-                        // カーソルのカレント位置を設定
-                        dataGridView1.CurrentCell = dataGridView1[top, rect.Y];
-
-                        // 新しい選択範囲を設定
-                        for (int i = 0; i < rect.Height; i++)
-                            for (int j = 0; j < rect.Width; j++)
-                                dataGridView1[top + j, rect.Y + i].Selected = true;
-
-                        // 範囲を保存
-                        rect.X = top;
-                        selectRange = rect;
-
-                        // 描画更新(アクティブセルの色分けの為)
-                        dataGridView1.Invalidate();
-                    }
-                    // 処理済みフラグを立てる
-                    e.Handled = true;
-                    break;
-
-                case 40:    // ↓
-                    // 選択範囲を拡大
-                    if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.SHIFTKey))
-                    {
-                        // +SHIFT の場合
-
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 領域拡大が可能な場合のみ処理する
-                        if ((rect.Y + rect.Height) < setting.RowLength)
-                        {
-                            // 範囲を拡大
-                            rect.Height++;
-                            for (int j = 0; j < rect.Width; j++)
-                                dataGridView1[rect.X + j, rect.Bottom].Selected = true;
-
-                            // 範囲を保存
-                            selectRange = rect;
-                        }
-
-                    }
-
-                    // 選択範囲単位の移動
-                    {
-                        CombinationKeyState state = setting.keys.getShiftBeforeConvertion(keyValue);
-                        if ((state & CombinationKeyState.ALTKey) == 0 &&
-                            (state & CombinationKeyState.SHIFTKey) == 0)
-                        {
-                            // ↓ 又は CTRL+↓ の場合
-
-                            // 選択範囲を取得
-                            Rect rect = getSelectedRect();
-
-                            // 選択範囲をクリア
-                            dataGridView1.ClearSelection();
-
-                            // 先頭位置の計算(※下端のはみ出しチェック)
-                            int top;
-                            if ((state & CombinationKeyState.CTRLKey) != 0)
-                            {
-                                // +Ctrl時
-                                top = rect.Y + 1;
-                            }
-                            else
-                            {
-                                // ↓のみ
-                                top = rect.Y + rect.Height;
-                            }
-                            int limit = setting.RowLength - rect.Height;
-                            top = (top > limit) ? limit : top;  // 先頭が 終端-選択幅(垂直方向) を超える場合は 補正する
-
-                            // カーソルのカレント位置を設定
-                            dataGridView1.CurrentCell = dataGridView1[rect.X, top];
-
-                            // 新しい選択範囲を設定
-                            for (int i = 0; i < rect.Height; i++)
-                                for (int j = 0; j < rect.Width; j++)
-                                    dataGridView1[rect.X + j, top + i].Selected = true;
-
-                            // 範囲を保存
-                            rect.Y = top;
-                            selectRange = rect;
-
-                            // 画面2/3より下に移動した場合の画面送り
-                            scrollingForward();
-                        }
-                    }
-                    // 処理済みフラグを立てる
-                    e.Handled = true;
-                    break;
-
-                case 45:    // Insert
-                    {
-                        // 範囲の追加
-                        insertToAllCell(selectRange.Top, selectRange.Height);
-                        calcNakanukiRange(true, selectRange.Top, selectRange.Height);
-                        calcKiribariRange(true, selectRange.Top, selectRange.Height);
-
-                        // アンドゥ履歴をフラッシュ
-                        flushUndoList();
-
-                        isFirstEdit = true;
-
-                        // 描画更新(切り貼り範囲反映の為)
-                        dataGridView1.Invalidate();
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 46:    // Delete
-                    {
-                        if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.SHIFTKey))
-                        {
-                            // +Shiftの場合
-
-                            // 範囲を削除
-                            cutToAllCell(selectRange.Top, selectRange.Height);
-                            calcNakanukiRange(false, selectRange.Top, selectRange.Height);
-                            calcKiribariRange(false, selectRange.Top, selectRange.Height);
-
-                            // アンドゥ履歴をフラッシュ
-                            flushUndoList();
-
-                            isFirstEdit = true;
-
-                            // 描画更新(切り貼り範囲反映の為)
-                            dataGridView1.Invalidate();
-
-                            // 処理済みフラグを立てる
-                            e.Handled = true;
-                        }
-                        else if (setting.keys.checkShiftBeforeConvertion(keyValue, CombinationKeyState.None))
-                        {
-                            // 選択範囲のセル内容を消去
-                            deleteRect(getSelectedRect());
-
-                            isFirstEdit = true;
-
-                            // 処理済みフラグを立てる
-                            e.Handled = true;
-
-                            // 描画更新(継続記号の更新の為)
-                            dataGridView1.Invalidate();
-                        }
-                    }
-                    break;
-
-                case 48:    // 0-9(Full-key)
-                case 49:
-                case 50:
-                case 51:
-                case 52:
-                case 53:
-                case 54:
-                case 55:
-                case 56:
-                case 57:
-
-                case 96:    // 0-9(10key)
-                case 97:
-                case 98:
-                case 99:
-                case 100:
-                case 101:
-                case 102:
-                case 103:
-                case 104:
-                case 105:
-                    {
-                        // フルキーのコードはテンキーコードに補正
-                        int key = (e.KeyValue < 96) ? e.KeyValue + 48 : e.KeyValue;
-
-                        // 入力値を計算
-                        byte[] ch = { (byte)key };
-                        ch[0] += (byte)'0';
-                        ch[0] -= 96;
-
-                        // アンドゥグループの作成
-                        UndoGroup undoGroup = new UndoGroup(
-                            setting.UndoCount++, "入力", UndoOperationTarget.ToGrid);
-                        undoList.Add(undoGroup);
-
-                        Rect rect = selectRange;
-                        for(int i = 0; i < rect.Width; i++)
-                        {
-                            // アンドゥ情報の作成
-                            UndoOperation undo = new UndoOperation(
-                                rect.X + i, rect.Y, dataGridView1[rect.X + i, rect.Y].Value.ToString(), "");
-
-                            // 入力前に情報が入っているか確認
-                            if (!checkCellValue(rect.X + i, rect.Y))
-                            {
-                                // 空白の場合は使用状況を修正
-                                aryCellUsedCount[rect.X + i]++;
-                            }
-
-                            // 初回フラグが立ち, 尚且つ "常に追加"が未チェックの場合のみ 初回編集を上書きにする
-                            if (isFirstEdit && !this.alwaysAppendToolStripMenuItem.Checked)
-                            {
-                                // セルに値を設定(初回編集)
-                                dataGridView1[rect.X + i, rect.Y].Value = System.Text.Encoding.GetEncoding(932).GetString(ch);
-                            }
-                            else
-                            {
-                                // セルに値を設定(継続編集)
-                                dataGridView1[rect.X + i, rect.Y].Value += System.Text.Encoding.GetEncoding(932).GetString(ch);
-                            }
-                            isCellEdit = true;
-
-                            // アンドゥ情報の記録
-                            undo.NewValue = dataGridView1[rect.X + i, rect.Y].Value.ToString();
-                            undoGroup.Operations.Add(undo);
-                        }
-                        // アンドゥメニュ更新
-                        setUndoText(undoGroup.Title);
-                        // アンドゥ履歴の調整
-                        processUndoLimit();
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-
-                        // 描画更新(継続記号の更新の為)
-                        dataGridView1.Invalidate();
-                    }
-                    break;
-
-                case 74:    // J
-                case 75:    // K
-                    {
-                        // キーの頭出し
-                        int value = selectRange.Top;
-                        int col, row;
-                        if (e.KeyValue == 74)
-                        {
-                            // 後方検索
-                            for (row = selectRange.Top - 1; row >= 0 && value == selectRange.Top; row--)
-                            {
-                                for (col = selectRange.Left; col <= selectRange.Right; col++)
-                                {
-                                    if (dataGridView1[col, row].Value.ToString() == "") continue;
-                                    value = row;
-                                    break;
-                                }
-                            }
-                        }
-                        if (e.KeyValue == 75)
-                        {
-                            // 前方検索
-                            for (row = selectRange.Bottom + 1; row < setting.RowLength && value == selectRange.Top; row++)
-                            {
-                                for (col = selectRange.Left; col <= selectRange.Right; col++)
-                                {
-                                    if (dataGridView1[col, row].Value.ToString() == "") continue;
-                                    value = row;
-                                    break;
-                                }
-                            }
-                        }
-
-                        //選択範囲を修正
-                        selectRange.Y = value;
-                        dataGridView1.CurrentCell = dataGridView1[dataGridView1.CurrentCell.ColumnIndex, selectRange.Y];
-
-                        //選択範囲を解除
-                        dataGridView1.ClearSelection();
-
-                        //新しい範囲に設定
-                        for(int i = 0; i < selectRange.Height; i++)
-                            for (int j = 0; j < selectRange.Width; j++)
-                            {
-                                dataGridView1[selectRange.X + j, selectRange.Y + i].Selected = true;
-                            }
-
-                        //表示位置の調整
-                        //dataGridView1.FirstDisplayedScrollingRowIndex = selectRange.Y  - (selectRange.Y % setting.Fps);
-
-                        // 画面2/3より下に移動した場合の画面送り
-                        scrollingForward();
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 106:   // '*'(10key)
-                    // 選択範囲を拡大
-                    {
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 領域拡大が可能な場合のみ処理する
-                        if ((rect.Y + rect.Height) < setting.RowLength)
-                        {
-                            // 範囲を拡大
-                            rect.Height++;
-                            for (int j = 0; j < rect.Width; j++)
-                                dataGridView1[rect.X + j, rect.Bottom].Selected = true;
-
-                            // 範囲を保存
-                            selectRange = rect;
-                        }
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 107:   // '+'(10key)
-                    {
-                        // 入力前に情報が入っているか確認
-                        Rect rect = selectRange;
-                        if (!checkCellValue(rect.X, rect.Y))
-                        {
-                            // 空白の場合は使用状況を修正
-                            aryCellUsedCount[rect.X]++;
-                        }
-
-                        // 手前の入力を検索
-                        int key = 1;
-                        for (int i = rect.Y - 1; i >= 0; i--)
-                        {
-                            // 空白と空セルは無視
-                            String str = dataGridView1[rect.X, i].Value.ToString();
-                            //if (str == "" || str == setting.KaraCell) continue;
-                            if (str == "" ) continue;
-                            if (str == setting.KaraCell) return;    // カラセルが入力されていたら、処理を中断
-
-                            // 値を見付けたら、取得後＋１して検索を終わる
-                            key = int.Parse(str);
-                            key++;
-                            break;
-                        }
-
-                        // アンドゥグループの作成
-                        UndoGroup undoGroup = new UndoGroup(
-                            setting.UndoCount++, "入力", UndoOperationTarget.ToGrid);
-
-                        // アンドゥ情報の作成
-                        UndoOperation undo = new UndoOperation(
-                            rect.X, rect.Y, dataGridView1[rect.X, rect.Y].Value.ToString(), "");
-
-                        // セルに値を設定
-                        dataGridView1[rect.X, rect.Y].Value = key.ToString();
-
-                        // アンドゥ情報の記録
-                        undo.NewValue = dataGridView1[rect.X, rect.Y].Value.ToString();
-                        undoGroup.Operations.Add(undo);
-                        undoList.Add(undoGroup);
-                        // アンドゥメニュ更新
-                        setUndoText(undoGroup.Title);
-                        // アンドゥ履歴の調整
-                        processUndoLimit();
-
-                        // 選択範囲をクリア
-                        dataGridView1.ClearSelection();
-
-                        // 先頭位置の計算(※下端のはみ出しチェック)
-                        int len = cursorMoveWithNakaNuki();
-                        if (len > 0)
-                        {
-                            int top = rect.Y + len;
-                            int limit = setting.RowLength - rect.Height;
-                            top = (top > limit) ? limit : top;  // 先頭が 終端-選択幅(垂直方向) を超える場合は 補正する
-
-                            // カーソルのカレント位置を設定
-                            dataGridView1.CurrentCell = dataGridView1[rect.X, top];
-
-                            // 新しい選択範囲を設定
-                            for (int i = 0; i < rect.Height; i++)
-                                for (int j = 0; j < rect.Width; j++)
-                                    dataGridView1[rect.X + j, top + i].Selected = true;
-
-                            // 範囲を保存
-                            rect.Y = top;
-                            selectRange = rect;
-                        }
-
-                        isFirstEdit = true;
-
-                        // 画面2/3より下に移動した場合の画面送り
-                        scrollingForward();
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-
-                        // 描画更新(継続記号の更新の為)
-                        dataGridView1.Invalidate();
-                    }
-                    break;
-
-                case 109:   // '-'(10key)
-                    {
-                        // 入力前に情報が入っているか確認
-                        Rect rect = selectRange;
-                        if (!checkCellValue(rect.X, rect.Y))
-                        {
-                            // 空白の場合は使用状況を修正
-                            aryCellUsedCount[rect.X]++;
-                        }
-
-                        // 手前の入力を検索
-                        int key = 0;
-                        for (int i = rect.Y - 1; i >= 0; i--)
-                        {
-                            // 空白と空セルは無視
-                            String str = dataGridView1[rect.X, i].Value.ToString();
-                            //if (str == "" || str == setting.KaraCell) continue;
-                            if (str == "") continue;
-                            if (str == setting.KaraCell) return;    // カラセルが入力されていたら、処理を中断
-
-                            // 値を見付けたら、取得後－１して検索を終わる
-                            key = int.Parse(str);
-                            key = (key - 1) > 0 ? key-1 : key;  // １以下にならないようにしておく
-                            break;
-                        }
-
-                        // アンドゥグループの作成
-                        UndoGroup undoGroup = new UndoGroup(
-                            setting.UndoCount++, "入力", UndoOperationTarget.ToGrid);
-
-                        // アンドゥ情報の作成
-                        UndoOperation undo = new UndoOperation(
-                            rect.X, rect.Y, dataGridView1[rect.X, rect.Y].Value.ToString(), "");
-
-                        // セルに値を設定
-                        dataGridView1[rect.X, rect.Y].Value = key.ToString();
-
-                        // アンドゥ情報の記録
-                        undo.NewValue = dataGridView1[rect.X, rect.Y].Value.ToString();
-                        undoGroup.Operations.Add(undo);
-                        undoList.Add(undoGroup);
-                        // アンドゥメニュ更新
-                        setUndoText(undoGroup.Title);
-                        // アンドゥ履歴の調整
-                        processUndoLimit();
-
-                        // 選択範囲をクリア
-                        dataGridView1.ClearSelection();
-
-                        // 先頭位置の計算(※下端のはみ出しチェック)
-                        int len = cursorMoveWithNakaNuki();
-                        if (len > 0)
-                        {
-                            int top = rect.Y + len;
-                            int limit = setting.RowLength - rect.Height;
-                            top = (top > limit) ? limit : top;  // 先頭が 終端-選択幅(垂直方向) を超える場合は 補正する
-
-                            // カーソルのカレント位置を設定
-                            dataGridView1.CurrentCell = dataGridView1[rect.X, top];
-
-                            // 新しい選択範囲を設定
-                            for (int i = 0; i < rect.Height; i++)
-                                for (int j = 0; j < rect.Width; j++)
-                                    dataGridView1[rect.X + j, top + i].Selected = true;
-
-                            // 範囲を保存
-                            rect.Y = top;
-                            selectRange = rect;
-                        }
-
-                        isFirstEdit = true;
-
-                        // 画面2/3より下に移動した場合の画面送り
-                        scrollingForward();
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-
-                        // 描画更新(継続記号の更新の為)
-                        dataGridView1.Invalidate();
-                    }
-                    break;
-
-                case 111:   // '/'(10key)
-                    // 選択範囲を縮小
-                    {
-                        // 選択範囲を取得
-                        Rect rect = getSelectedRect();
-
-                        // 領域縮小が可能な場合のみ処理する
-                        if (rect.Height > 1)
-                        {
-                            // 範囲を縮小
-                            for (int j = 0; j < rect.Width; j++)
-                                dataGridView1[rect.X + j, rect.Bottom].Selected = false;
-
-                            // 範囲を保存
-                            rect.Height--;
-                            selectRange = rect;
-                        }
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-                    }
-                    break;
-
-                case 110:   // '.'(10key)
-                case 190:   // '.'(full-key)
-                    {
-                        // アンドゥグループの作成
-                        UndoGroup undoGroup = new UndoGroup(
-                            setting.UndoCount++, "入力", UndoOperationTarget.ToGrid);
-                        undoList.Add(undoGroup);
-
-                        // 値の入力
-                        Rect rect = selectRange;
-                        for (int i = rect.Left; i <= rect.Right; i++)
-                        {
-                            // アンドゥ情報の作成
-                            UndoOperation undo = new UndoOperation(
-                                rect.X, rect.Y, dataGridView1[i, rect.Y].Value.ToString(), "");
-
-                            // 入力前に情報が入っているか確認
-                            if (!checkCellValue(i, rect.Y))
-                            {
-                                // 空白の場合は使用状況を修正
-                                aryCellUsedCount[i]++;
-                            }
-
-                            // セルに "カラセルの値"を設定
-                            dataGridView1[i, rect.Y].Value = setting.KaraCell;
-
-                            // アンドゥ情報の記録
-                            undo.NewValue = dataGridView1[i, rect.Y].Value.ToString();
-                            undoGroup.Operations.Add(undo);
-                        }
-                        // アンドゥメニュ更新
-                        setUndoText(undoGroup.Title);
-                        // アンドゥ履歴の調整
-                        processUndoLimit();
-
-                        // 設定によりカーソル移動
-                        int len = cursorMoveWithNakaNuki();
-                        if (!setting.IsKaraNoMove && len > 0)
-                        {
-                            // ※基本的に Enterキー動作と同じ
-
-                            // 選択範囲を取得
-                            rect = selectRange;
-
-                            // 選択範囲をクリア
-                            dataGridView1.ClearSelection();
-
-                            // 先頭位置の計算(※下端のはみ出しチェック)
-                            int top = rect.Y + len;
-                            int btm = setting.RowLength - rect.Height;
-                            top = (top > btm) ? btm : top;  // 先頭が 終端-選択幅(垂直方向) を超える場合は 補正する
-
-                            // カーソルのカレント位置を設定
-                            dataGridView1.CurrentCell = dataGridView1[rect.X, top];
-
-                            // 新しい選択範囲を設定
-                            for (int i = 0; i < rect.Height; i++)
-                                for (int j = 0; j < rect.Width; j++)
-                                    dataGridView1[rect.X + j, top + i].Selected = true;
-
-                            // 範囲を保存
-                            rect.Y = top;
-                            selectRange = rect;
-
-                            // 画面2/3より下に移動した場合の画面送り
-                            scrollingForward();
-                        }
-
-                        isFirstEdit = true;
-
-                        // 処理済みフラグを立てる
-                        e.Handled = true;
-
-                        // 描画更新(継続記号の更新の為)
-                        dataGridView1.Invalidate();
-                    }
-                    break;
+                return;
+            }
+
+            if (dispatchResult == GridDispatchResult.GridCommand)
+            {
+                e.Handled = true;
+                InvalidateActiveColumnTransition(previousCol);
             }
 
             //初期編集状態の設定/解除
-            isFirstEdit = isCellEdit ? false : true;
+            isFirstEdit = (!isCellEdit);
 
             return;
         }
@@ -2741,7 +1814,7 @@ namespace AEIOU
         // KeyPressイベントハンドラ
         private void dataGridView1_KeyPress(object sender, KeyPressEventArgs e)
         {
-            //
+            // (なにもしない)
             return;
         }
 
@@ -2749,7 +1822,7 @@ namespace AEIOU
         // KeyUpイベントハンドラ
         private void dataGridView1_KeyUp(object sender, KeyEventArgs e)
         {
-            //
+            // (なにもしない)
             return;
         }
 
@@ -2757,26 +1830,7 @@ namespace AEIOU
         // MouseDownイベントハンドラ
         private void dataGridView1_CellMouseDown(object sender, DataGridViewCellMouseEventArgs e)
         {
-            // 左クリックかチェック
-            if ((e.Button & System.Windows.Forms.MouseButtons.Left) != 0)
-            {
-                // 選択範囲内かチェック
-                Rect rect = selectRange;
-                int col = e.ColumnIndex;
-                int row = e.RowIndex;
-                if (rect.Top > row || rect.Bottom < row || rect.Left > col || rect.Right < col)
-                {
-                    // 初期状態に戻す
-                    mouseDownPoint = new Point(-1, -1);
-                    isRectDrag = false;
-                }
-                else if (rect.Top <= row && rect.Bottom >= row && rect.Left <= col && rect.Right >= col)
-                {
-                    // カレントの位置を取得
-                    mouseDownPoint = new Point(col, row);
-                    isRectDrag = true;
-                }
-            }
+            gridMouseEventHandler.HandleMouseDown(e, selectRange, ref mouseDownPoint, ref isRectDrag, ref isCtrlDragCopy);
 
             // 描画更新(アクティブセルの色分けの為)
             dataGridView1.Invalidate();
@@ -2788,71 +1842,19 @@ namespace AEIOU
         // MouseMoveイベントハンドラ
         private void dataGridView1_CellMouseMove(object sender, DataGridViewCellMouseEventArgs e)
         {
-            if (isRectDrag)
-            {
-                // 描画更新(範囲描画のため)
-                dataGridView1.Invalidate();
-            }
+            gridMouseEventHandler.HandleMouseMove(e, isRectDrag, dataGridView1, ref isCtrlDragCopy);
         }
 
         //----------------------------------------------------------------------------------------
         // MouseUpイベントハンドラ
         private void dataGridView1_CellMouseUp(object sender, DataGridViewCellMouseEventArgs e)
         {
-            // ドラッグ中だった場合は 選択範囲を修正し移動（又はコピー）処理を行う
-            if (isRectDrag)
-            {
-                //選択範囲を解除
-                dataGridView1.ClearSelection();
-
-                //カレントセルは選択しておく
-                dataGridView1.CurrentCell.Selected = true;
-
-                if ((Control.ModifierKeys & Keys.Control) != 0)
-                {
-                    //選択元をコピー＆ペースト
-                    int col = dataGridView1.CurrentCell.ColumnIndex - (mouseDownPoint.X - selectRange.X);
-                    int row = dataGridView1.CurrentCell.RowIndex - (mouseDownPoint.Y - selectRange.Y);
-                    copyToBuf(selectRange);
-                    copyToCell(col, row, selectRange);
-                }
-                else
-                {
-                    //選択元をカット＆ペースト
-                    int col = dataGridView1.CurrentCell.ColumnIndex - (mouseDownPoint.X - selectRange.X);
-                    int row = dataGridView1.CurrentCell.RowIndex - (mouseDownPoint.Y - selectRange.Y);
-                    cutToBuf(selectRange);
-                    copyToCell(col, row, selectRange);
-                }
-            }
-            else
-            {
-                // Ctrlキー同時押しの抑止
-                if ((Control.ModifierKeys & Keys.Control) != 0)
-                {
-                    //MessageBox.Show("Ctrlキー同時押しによるマルチセレクト機能には未対応です。");
-
-                    // 選択領域を解除 (カレントフレームのみ選択する)
-                    dataGridView1.ClearSelection();
-                    dataGridView1.CurrentCell.Selected = true;
-                }
-            }
-
-            // 初期状態に戻す
-            mouseDownPoint = new Point(-1, -1);
-            isRectDrag = false;
-            isFirstEdit = true;
-
-            // 選択範囲を保存
-            selectRange = getSelectedRect();
-
-            // 描画更新(範囲描画のため)
-            dataGridView1.Invalidate();
-
+            gridMouseEventHandler.HandleMouseUp(e, dataGridView1, ref selectRange, ref mouseDownPoint, ref isRectDrag, ref isCtrlDragCopy, ref isFirstEdit);
             return;
         }
 
         //----------------------------------------------------------------------------------------
+        // ヘッダ編集用テキストボックスの表示と操作
         int textBoxColumn = 0;
         private void TextBox_Terminate()
         {
@@ -2861,6 +1863,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // ヘッダ編集用テキストボックスのKeyDownイベントハンドラ
         private void TextBox_KeyDown(object sender, KeyEventArgs e)
         {
             //キー入力があったら、内容をチェック
@@ -2868,7 +1871,7 @@ namespace AEIOU
             {
                 case Keys.Enter:
                     // 入力確定
-                    dataGridView1.Columns[textBoxColumn].HeaderText = textBox1.Text;
+                    SetHeaderValue(textBoxColumn, textBox1.Text);
                     TextBox_Terminate();
                     e.Handled = true;
                     break;
@@ -2881,6 +1884,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // ヘッダ編集用テキストボックスのLeaveイベントハンドラ
         private void TextBox_Leave(object sender, EventArgs e)
         {
             // テキストボックスからフォーカスが外れた場合、自分自身をdataGridViewから外す
@@ -2889,13 +1893,15 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // セルのMouseDoubleClickイベントハンドラ
         private void dataGridView1_CellDoubleClick(object sender, DataGridViewCellEventArgs e)
         {
+
             // セルがダブルクリックされた
-            if (e.ColumnIndex >= 0 && e.RowIndex == -1)
+            if (e.ColumnIndex > -1 && e.RowIndex == -1)
             {
-                // ヘッダの場合
-                textBox1.Text = dataGridView1.Columns[e.ColumnIndex].HeaderText;
+                // ヘッダの場合 (テキストボックスを出す)
+                textBox1.Text = GetHeaderValue(e.ColumnIndex);
                 textBoxColumn = e.ColumnIndex;
                 textBox1.Left = (e.ColumnIndex + 1) * 50 + 1;
                 textBox1.Top = 3;
@@ -2910,6 +1916,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // クリップボードへのテキスト設定をリトライ付きで行う
         private void SetClipboardTextWithRetry(string text, int maxRetries = 5, int delayMs = 100)
         {
             for (int i = 0; i < maxRetries; i++)
@@ -2929,6 +1936,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // クリップボードの利用可能状態の確認
         private bool IsClipboardAvailable()
         {
             try
@@ -2943,78 +1951,16 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // AEへコピー
         private void AECopy(bool isDirect)
         {
-            // AEへコピー
-            String Copytext = "";
-            int rlen = 0;
-
-            // カレントの列を取得
             int col = dataGridView1.CurrentCell.ColumnIndex;
-
-            //ヘッダ書き出し(定型文字列)
-            Copytext = "Adobe After Effects " + setting.AfterRemapVersion + " Keyframe Data\r\n";
-            Copytext += "\r\n";
-            Copytext += "\tUnits Per Second\t" + setting.Fps.ToString() + "\r\n";
-            Copytext += "\tSource Width\t640\r\n";
-            Copytext += "\tSource Height\t480\r\n";
-            Copytext += "\tSource Pixel Aspect Ratio\t1\r\n";
-            Copytext += "\tComp Pixel Aspect Ratio\t1\r\n";
-            Copytext += "\r\n";
-            Copytext += "Time Remap\r\n";
-            Copytext += "\tFrame\tseconds\r\n";
-
-            // タイミングの書き出し
-            for (int i = 0; i < setting.RowLength; i++)
-            {
-                // 中抜き範囲は無視
-                bool bNuki = false;
-                foreach (Range r in delRange)
-                {
-                    if ((r.Top <= i) && (r.Bottom >= i))
-                    {
-                        //中抜き範囲時は、範囲長に積算する
-                        rlen++;
-                        bNuki = true;
-                        break;
-                    }
-                }
-                //中抜き範囲内は無視
-                if (bNuki) continue;
-
-                // カラセルは無視
-                String str = dataGridView1[col, i].Value.ToString();
-                if (str == "") continue;
-
-                // 中ヌキ範囲長でフレーム値を補正
-                int fcnt = i - rlen;
-
-                // 秒数計算
-                double t = 0;
-                if (!isDirect)
-                {
-                    // 通常のリマップ計算
-                    t = (double)int.Parse(str) - setting.FirstFrame;
-                    t /= (double)setting.Fps;
-                }
-                else
-                {
-                    // 入力値のまま渡す
-                    t = (double)int.Parse(str);
-                }
-
-                // 計算結果を文字列に収める(タイミングの秒数は、有効桁数を６桁に丸める)
-                Copytext += "\t" + fcnt.ToString() + "\t" + t.ToString("g6") + "\r\n";
-
-            }
-
-            //フッタ書き出し(定型文字列)
-            Copytext += "\r\n";
-            Copytext += "\r\n";
-            Copytext += "End of Keyframe Data\r\n";
+            string copyText = afterEffectsDataService.CreateKeyframeData(
+                setting.AfterRemapVersion, setting.Fps, setting.FirstFrame, isDirect,
+                GetSheetRowCount(), delegate(int row) { return GetCellValue(col, row); }, IsExcludedRow);
 
             //クリップボードに反映
-            SetClipboardTextWithRetry(Copytext);
+            SetClipboardTextWithRetry(copyText);
             if (!IsClipboardAvailable())
             {
                 MessageBox.Show("クリップボードにアクセスできません。");
@@ -3022,6 +1968,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // AEへコピー
         private void AECopyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // AEへコピー
@@ -3030,6 +1977,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // AEへコピー(TimeRemap以外)
         private void directRemapToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // AEへコピー(TimeRemap以外)
@@ -3038,68 +1986,16 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // AEへコピー(Script仲介)
         private void AECopyWithScript(bool isDirect)
         {
-            // AEへコピー(Script仲介)
-            // ※処理的には、AEへコピーと同じ。
-            // ※違うのは４点 : 書式, fcntを 0から数える、タイミングの秒数計算時のfpsで割る処理の省略, AfterEffects呼び出し
-            String Copytext = "";
-            int rlen = 0;
-
-            // カレントの列を取得
             int col = dataGridView1.CurrentCell.ColumnIndex;
-
-            //ヘッダ書き出し(定型文字列)
-            Copytext = "{property:'Time Remap',scale:" + setting.Fps.ToString("f") + ",keys:[";
-
-            //タイミングの書き出し
-            for (int i = 0; i < setting.RowLength; i++)
-            {
-                // 中抜き範囲は無視
-                bool bNuki = false;
-                foreach (Range r in delRange)
-                {
-                    if ((r.Top <= i) && (r.Bottom >= i))
-                    {
-                        //中抜き範囲時は、範囲長に積算する
-                        rlen++;
-                        bNuki = true;
-                        break;
-                    }
-                }
-                //中抜き範囲内は無視
-                if (bNuki) continue;
-
-                // カラセルは無視
-                String str = dataGridView1[col, i].Value.ToString();
-                if (str == "") continue;
-
-                // 中ヌキ範囲長でフレーム値を補正
-                int fcnt = i - rlen;
-
-                // 秒数計算
-                double t = 0;
-                if (!isDirect)
-                {
-                    // 通常のリマップ計算(※スクリプトに渡す場合は fps計算せず スクリプト側に一任)
-                    t = (double)int.Parse(str) - setting.FirstFrame;
-                }
-                else
-                {
-                    // 入力値のまま渡す
-                    t = (double)int.Parse(str);
-                }
-
-                // 計算結果を文字列に収める
-                Copytext += "{'t':"+fcnt.ToString()+",'v':["+t.ToString()+"]},";
-
-            }
-
-            //フッタ書き出し(定型文字列)
-            Copytext += "]}";
+            string copyText = afterEffectsDataService.CreateScriptData(
+                setting.Fps, setting.FirstFrame, isDirect, GetSheetRowCount(),
+                delegate(int row) { return GetCellValue(col, row); }, IsExcludedRow);
 
             //クリップボードに反映
-            SetClipboardTextWithRetry(Copytext);
+            SetClipboardTextWithRetry(copyText);
             if (!IsClipboardAvailable())
             {
                 MessageBox.Show("クリップボードにアクセスできません。");
@@ -3109,7 +2005,20 @@ namespace AEIOU
             Process.Start(setting.AfterPath, "-r " + setting.AfterOption);
         }
 
+        private bool IsExcludedRow(int row)
+        {
+            foreach (Range range in delRange)
+            {
+                if (range.Top <= row && range.Bottom >= row)
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         //----------------------------------------------------------------------------------------
+        // AEへコピー(Script仲介)
         private void jSRemapToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // AEへコピー(Script仲介)
@@ -3118,93 +2027,76 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // AEへコピー(TimeRemap以外)(Script仲介)
         private void pasteFromAEToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            // AEからペースト
-            String[] clip = System.Text.RegularExpressions.Regex.Split(Clipboard.GetText(), "\r\n");
-            int i = 0;
-
-            // カレントの列を取得
-            int col = dataGridView1.CurrentCell.ColumnIndex;
-
-            // ヘッダチェック
-            if (clip[i].IndexOf("Adobe After Effects ") < 0 ||
-                clip[i].IndexOf("Keyframe Data") < 0)
+            AfterEffectsPasteData pasteData;
+            string errorMessage;
+            if (!afterEffectsDataService.TryParseKeyframeData(Clipboard.GetText(), out pasteData, out errorMessage))
             {
-                MessageBox.Show("ヘッダ : 未対応のヘッダ.");
+                MessageBox.Show(errorMessage);
                 return;
             }
 
-            // fpsのチェック
-            i += 2;
+            int col = dataGridView1.CurrentCell.ColumnIndex;
+            setting.Fps = pasteData.Fps;
+            switch (setting.Fps)
             {
-                String[] buf = clip[i].Split('\t');
-                if (clip[i].IndexOf("\tUnits Per Second") < 0 ||
-                    buf.Length < 3)
-                {
-                    MessageBox.Show("Units Per Second : 目的の情報が見つからない.");
-                    return;
-                }
-                setting.Fps = int.Parse(buf[2]);
-
-                // fps変更をメニューに反映
-                switch (setting.Fps)
-                {
-                    case 24:
-                        this.fPS30ToolStripMenuItem.Checked = false;
-                        this.fPS24ToolStripMenuItem.Checked = true;
-                        break;
-                    case 30:
-                        this.fPS30ToolStripMenuItem.Checked = true;
-                        this.fPS24ToolStripMenuItem.Checked = false;
-                        break;
-                    default:
-                        this.fPS30ToolStripMenuItem.Checked = false;
-                        this.fPS24ToolStripMenuItem.Checked = false;
-                        break;
-                }
-
+                case 24:
+                    this.fPS30ToolStripMenuItem.Checked = false;
+                    this.fPS24ToolStripMenuItem.Checked = true;
+                    break;
+                case 30:
+                    this.fPS30ToolStripMenuItem.Checked = true;
+                    this.fPS24ToolStripMenuItem.Checked = false;
+                    break;
+                default:
+                    this.fPS30ToolStripMenuItem.Checked = false;
+                    this.fPS24ToolStripMenuItem.Checked = false;
+                    break;
             }
 
-            // "TimeRemap"で始まる行を探す
-            for (; i < clip.Length; i++)
+            List<CellWriteEntry> writes = new List<CellWriteEntry>();
+            foreach (AfterEffectsKeyframe keyframe in pasteData.Keyframes)
             {
-                if (clip[i].IndexOf("Time Remap") != -1) break;
-            }
+                int t = (int)Math.Round(setting.Fps * keyframe.Value);
+                string writeValue = (t + setting.FirstFrame).ToString();
+                string currentValue;
+                string failureReason;
+                if (!TryGetCellValue(col, keyframe.Frame, out currentValue, out failureReason))
+                {
+                    continue;
+                }
 
-            // リマップ情報を読む
-            i+=2;
-            for (; i < clip.Length; i++)
-            {
-                String[] buf = clip[i].Split('\t');
-                if (buf.Length <= 1) break;
+                if (currentValue == writeValue)
+                {
+                    continue;
+                }
 
-                int frm = int.Parse(buf[1]);
-                double val = double.Parse(buf[2]);
-                //int t = (int)((double)setting.Fps * val);
-                //if ((((double)setting.Fps * val) - ((double)t)) >= 0.5) t += 1; // コマ数の四捨五入
-                int t = (int)Math.Round(setting.Fps * val);
-
-                // タイミング情報をセルに書き込む
-                // ※書き込むセルが空欄の場合は、使用カウントを＋１
-                DataGridViewCell cell = dataGridView1[col, frm];
-                if (cell.Value.ToString().Length == 0)
+                if (currentValue.Length == 0)
                 {
                     aryCellUsedCount[col]++;
                 }
-                cell.Value = (t + setting.FirstFrame).ToString();
+
+                writes.Add(new CellWriteEntry(keyframe.Frame, col, writeValue));
             }
 
-            isFirstEdit = true;
+            ApplyCellWrites("AEペースト", writes);
+
+            if (writes.Count > 0)
+            {
+                isFirstEdit = true;
+            }
 
             // 描画更新(継続記号の更新の為)
             dataGridView1.Invalidate();
 
             // アンドゥ履歴をフラッシュ
-            flushUndoList();
+            flushUndoHistory();
         }
 
         //----------------------------------------------------------------------------------------
+        // 中抜き範囲の設定
         private void setNakanukiToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //中抜き範囲を設定
@@ -3221,6 +2113,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 切り貼り範囲の設定
         private void setKiribariToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //切り貼り範囲を設定
@@ -3229,7 +2122,7 @@ namespace AEIOU
             Rect rect = getSelectedRect();
             int t = rect.Top;
             int b = rect.Bottom;
-            for (int i = 0; i < addRange.Count; i++ )
+            for (int i = 0; i < addRange.Count; i++)
             {
                 Range r = addRange[i];
                 if (t <= r.Top && r.Top <= b && r.Bottom >= t)
@@ -3264,7 +2157,7 @@ namespace AEIOU
             }
 
             // アンドゥ履歴をフラッシュ
-            flushUndoList();
+            flushUndoHistory();
 
             isFirstEdit = true;
 
@@ -3273,6 +2166,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 中抜き範囲の解除
         private void cancelNakanukiToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //中抜き範囲の解除
@@ -3295,6 +2189,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 切り貼り範囲の解除
         private void cancelKiribariToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //切り貼り範囲の解除
@@ -3316,7 +2211,7 @@ namespace AEIOU
             }
 
             // アンドゥ履歴をフラッシュ
-            flushUndoList();
+            flushUndoHistory();
 
             isFirstEdit = true;
 
@@ -3325,6 +2220,18 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 操作のやり直し
+        private void redoToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            // 操作をやり直す
+            redoFunction();
+
+            isFirstEdit = true;
+
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 操作の元に戻す
         private void undoToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 操作を元に戻す
@@ -3334,55 +2241,15 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
-        private void setUndoText(String text)
-        {
-            // アンドゥ メニュー表示の更新
-            if (text.Length > 0)
-            {
-                undoToolStripMenuItem.Text = text + "を元に戻す";
-                undoToolStripMenuItem.Enabled = true;
-            }
-            else
-            {
-                undoToolStripMenuItem.Text = "元に戻す";
-                undoToolStripMenuItem.Enabled = false;
-            }
-        }
-
-        //----------------------------------------------------------------------------------------
-        private void processUndoLimit()
-        {
-            int total = 0;
-            for (int i = undoList.Count - 1; i >= 0; i--)
-            {
-                // 登録操作の合計を数える（新しい方から順に）
-                total += undoList[i].Operations.Count;
-
-                // limitを超えたら、古い順に履歴の削除を行う
-                if (total > setting.UndoLimitCount)
-                {
-                    // 削除するのは先頭から現在のインデックスまで
-                    int last = i;
-                    for (int j = 0; j <= last; j++)
-                    {
-                        undoList.RemoveAt(0);
-                    }
-                    // 削除が終わったら終了
-                    break;
-                }
-            }
-        }
-
-        //----------------------------------------------------------------------------------------
-        private void flushUndoList()
+        // アンドゥ履歴のフラッシュ
+        private void flushUndoHistory()
         {
             // アンドゥ非対応機能を使用した場合などに アンドゥ履歴をフラッシュする
-            undoList.Clear();
-            // メニュの表示も初期状態に戻す
-            setUndoText("");
+            gridViewManager.InitializeWork(dataGridView1, timingSheetModel);
         }
 
         //----------------------------------------------------------------------------------------
+        // コピー
         private void copyToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // コピー
@@ -3392,11 +2259,12 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 切り取り
         private void cutToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 切り取り
             copyRect = getSelectedRect();
-            cutToBuf(copyRect);
+            cutToBuf(copyRect, false);
             isFirstEdit = true;
 
             // 描画更新(継続記号の更新の為)
@@ -3404,12 +2272,13 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 貼り付け
         private void pasteToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 貼り付け
             int col = dataGridView1.CurrentCell.ColumnIndex;
             int row = dataGridView1.CurrentCell.RowIndex;
-            copyToCell(col, row, copyRect);
+            copyToCell(col, row, false);
             isFirstEdit = true;
 
             // 描画更新(継続記号の更新の為)
@@ -3417,6 +2286,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // フレームレート 30FPS
         private void fPS30ToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 30FPSに変更
@@ -3429,6 +2299,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // フレームレート 24FPS
         private void fPS24ToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 24FPSに変更
@@ -3441,6 +2312,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 常に手前に表示
         private void stayOnTopToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // TopMost設定の切り替え
@@ -3450,6 +2322,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // カラセル入力時の移動抑止
         private void karacellNoMoveToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // カラセル入力時の移動抑止設定の切り替え
@@ -3458,6 +2331,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // フレーム数表示⇔シート/コマ数表示 切り替え
         private void displayFrameNumberToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // フレーム数表示⇔シート/コマ数表示 切り替え
@@ -3469,6 +2343,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 開始フレーム数の設定
         private void firstFrameToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 開始フレーム設定
@@ -3477,18 +2352,17 @@ namespace AEIOU
             dialog.Value1 = setting.FirstFrame.ToString();
             if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
-                try
+                if (int.TryParse(dialog.Value1, out int frame))
                 {
-                    setting.FirstFrame = int.Parse(dialog.Value1);
-                }
-                catch (Exception ex)
-                {
+                    setting.FirstFrame = frame;
+                } else {
                     MessageBox.Show("入力された値を数値に変換できませんでした.");
                 }
             }
         }
 
         //----------------------------------------------------------------------------------------
+        // カラセル文字列の設定
         private void karacellValueToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // カラセル文字列の設定
@@ -3502,6 +2376,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // シートの秒数の設定
         private void secondsPerSheetToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // シートの秒数
@@ -3510,18 +2385,17 @@ namespace AEIOU
             dialog.Value1 = setting.SheetSec.ToString();
             if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
-                try
+                if (int.TryParse(dialog.Value1, out int sec))
                 {
-                    setting.SheetSec = int.Parse(dialog.Value1);
-                }
-                catch (Exception ex)
-                {
+                    setting.SheetSec = sec;
+                } else {
                     MessageBox.Show("入力された値を数値に変換できませんでした.");
                 }
             }
         }
 
         //----------------------------------------------------------------------------------------
+        // シートの基準線指定: 4コマ毎
         private void div4ToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // シートの基準線指定: 4コマ毎
@@ -3533,6 +2407,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // シートの基準線指定: 6コマ毎
         private void div6ToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // シートの基準線指定: 6コマ毎
@@ -3544,6 +2419,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // シートの基準線指定: 12コマ毎
         private void div12ToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // シートの基準線指定: 12コマ毎
@@ -3555,6 +2431,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // AfterFX.exe パス設定
         private void afterFXPathToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // AfterFX.exe パス設定
@@ -3579,6 +2456,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // リマップ用 jsx パス設定
         private void afterFXOptionToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // リマップ用 jsx パス設定
@@ -3602,6 +2480,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // セル変更時にウィンドウ位置調整する 設定
         private void autoAdjustToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // セル変更時にウィンドウ位置調整する 設定
@@ -3610,6 +2489,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // 作業情報の全初期化
         private void allInitializeToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 作業情報の全初期化
@@ -3617,6 +2497,7 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // セル枚数の指定
         private void inputCellCountToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // セル枚数の指定
@@ -3626,12 +2507,10 @@ namespace AEIOU
             dialog.Value1 = setting.ColLength.ToString();
             if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
-                try
+                if (int.TryParse(dialog.Value1, out int count))
                 {
-                    newCount = int.Parse(dialog.Value1);
-                }
-                catch (Exception ex)
-                {
+                    newCount = count;
+                } else {
                     MessageBox.Show("入力された値を数値に変換できませんでした.");
                 }
             }
@@ -3648,19 +2527,21 @@ namespace AEIOU
             }
 
             // アンドゥ履歴をフラッシュ
-            flushUndoList();
+            flushUndoHistory();
 
             // コピーバッファをフラッシュ
             InitializeWork(InitializeTarget.CopyBuffer);
         }
 
         //----------------------------------------------------------------------------------------
+        // セルの挿入
         private void insertCellToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // セルの挿入
 
             // カレントセルの位置を保存
             int col = dataGridView1.CurrentCell.ColumnIndex;
+            int originalColumnCount = GetSheetColumnCount();
 
             // グリッドサイズを変更
             resizeDataGridView1(setting.ColLength + 1, setting.RowLength);
@@ -3668,48 +2549,40 @@ namespace AEIOU
             // ウィンドウ位置調整
             adjustWindowSize();
 
-            // カレントセルの位置を空ける
-            {
-                // カレントセル位置を空けるように位置をずらす
-                int firstColIndex = (setting.ColLength - 1) - 1;
-                for (int i = firstColIndex; i >= col; i--)
-                {
-                    aryCellUsedCount[i + 1] = aryCellUsedCount[i];
-                    dataGridView1.Columns[i + 1].HeaderText = dataGridView1.Columns[i].HeaderText;
-                    for (int j = 0; j < setting.RowLength; j++)
-                        dataGridView1[i + 1, j].Value = dataGridView1[i, j].Value.ToString();
-                }
-                // 開いた場所を空欄にする
-                aryCellUsedCount[col] = 0;
-                dataGridView1.Columns[col].HeaderText = "";
-                for (int i = 0; i < setting.RowLength; i++)
-                    dataGridView1[col, i].Value = "";
-            }
+            // resize が旧列を同じ index に復元した後で snapshot を作り、反映する。
+            int rowCount = GetSheetRowCount();
+            IList<ColumnWriteEntry> writes = SheetColumnEditCalculator.CreateInsertColumn(
+                rowCount, originalColumnCount, col,
+                delegate(int row, int column) { return GetCellValue(column, row); },
+                delegate(int column) { return GetHeaderValue(column); },
+                delegate(int column) { return aryCellUsedCount[column]; });
+            ApplyColumnWrites(writes, rowCount);
 
             // アンドゥ履歴をフラッシュ
-            flushUndoList();
+            flushUndoHistory();
 
             // コピーバッファをフラッシュ
             InitializeWork(InitializeTarget.CopyBuffer);
         }
 
         //----------------------------------------------------------------------------------------
+        // セルの削除
         private void deleteCellToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // セルの削除
 
             // カレントセルの位置を詰める
             int col = dataGridView1.CurrentCell.ColumnIndex;
-            {
-                // カレントセル位置を埋めるように位置をずらす
-                for (int i = col; i < setting.ColLength - 1; i++)
-                {
-                    aryCellUsedCount[i] = aryCellUsedCount[i + 1];
-                    dataGridView1.Columns[i].HeaderText = dataGridView1.Columns[i + 1].HeaderText;
-                    for (int j = 0; j < setting.RowLength; j++)
-                        dataGridView1[i, j].Value = dataGridView1[i + 1, j].Value.ToString();
-                }
-            }
+            int rowCount = GetSheetRowCount();
+            int columnCount = GetSheetColumnCount();
+
+            // 削除対象を resize で失う前に snapshot を作り、左詰めを反映する。
+            IList<ColumnWriteEntry> writes = SheetColumnEditCalculator.CreateDeleteColumn(
+                rowCount, columnCount, col,
+                delegate(int row, int column) { return GetCellValue(column, row); },
+                delegate(int column) { return GetHeaderValue(column); },
+                delegate(int column) { return aryCellUsedCount[column]; });
+            ApplyColumnWrites(writes, rowCount);
 
             // グリッドサイズを変更
             resizeDataGridView1(setting.ColLength - 1, setting.RowLength);
@@ -3718,13 +2591,14 @@ namespace AEIOU
             adjustWindowSize();
 
             // アンドゥ履歴をフラッシュ
-            flushUndoList();
+            flushUndoHistory();
 
             // コピーバッファをフラッシュ
             InitializeWork(InitializeTarget.CopyBuffer);
         }
 
         //----------------------------------------------------------------------------------------
+        // 連番作成
         private void sequentialNumberToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 連番作成
@@ -3736,207 +2610,64 @@ namespace AEIOU
             dialog.Value2 = "1";
             if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
-                int start = 1;
-                int step = 1;
-                bool skip = false;
-                try
-                {
-                    start = int.Parse(dialog.Value1);
-                    step = int.Parse(dialog.Value2);
-                    skip = dialog.CheckValue1;
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("入力された値を数値に変換できませんでした.");
-                    return;
-                }
-
-                int col = selectRange.Left;
-                int row = selectRange.Top;
-                int frm = start;
-                int frmStep = (skip == true) ? step : step / Math.Abs(step);
-                int cnt = selectRange.Height;
-
-                // アンドゥグループの作成
-                UndoGroup undoGroup = new UndoGroup(
-                    setting.UndoCount++, "連番作成", UndoOperationTarget.ToGrid);
-
-                // 入力
-                for (int i = 0; i < cnt; i += Math.Abs(step))
-                {
-                    // アンドゥ情報の作成
-                    UndoOperation undo = new UndoOperation(
-                        col, row + i, dataGridView1[col, row + i].Value.ToString(), frm.ToString());
-
-                    if (dataGridView1[col, row + i].Value.ToString() == "")
-                    {
-                        aryCellUsedCount[col]++;
-                    }
-                    dataGridView1[col, row + i].Value = frm.ToString();
-
-                    // アンドゥ情報の記録
-                    undoGroup.Operations.Add(undo);
-
-                    //(*pColorBuf)[Col][Row + 1] = versionNumber;
-                    frm += frmStep;
-                }
-
-                // アンドゥ情報の記録
-                undoList.Add(undoGroup);
-                // アンドゥメニュ更新
-                setUndoText(undoGroup.Title);
-                // アンドゥ履歴の調整
-                processUndoLimit();
-
-                isFirstEdit = true;
-
-                // 描画更新(継続記号の更新の為)
-                dataGridView1.Invalidate();
-
+                Dictionary<string, string> parameters = new Dictionary<string, string>();
+                parameters.Add(SequentialNumberCommand.StartParameter, dialog.Value1);
+                parameters.Add(SequentialNumberCommand.StepParameter, dialog.Value2);
+                parameters.Add(SequentialNumberCommand.SkipParameter, dialog.CheckValue1.ToString());
+                ExecuteAutomationCommand(SequentialNumberCommand.CommandId, parameters);
             }
         }
 
         //----------------------------------------------------------------------------------------
+        // 連番作成(複数列、挿入番号、スキップ、ループ対応)
+        private void HandleRepeatInput(RepeatInputValues values)
+        {
+            Dictionary<string, string> parameters = new Dictionary<string, string>();
+            parameters.Add(RepeatNumberCommand.StartParameter, values.Start);
+            parameters.Add(RepeatNumberCommand.EndParameter, values.End);
+            parameters.Add(RepeatNumberCommand.RowIntervalParameter, values.RowInterval);
+            parameters.Add(RepeatNumberCommand.LoopParameter, values.Loop);
+            parameters.Add(RepeatNumberCommand.SkipParameter, values.Skip);
+            parameters.Add(RepeatNumberCommand.InsertParameter, values.Insert);
+            AutomationHostResult result = _repeatAutomationSession.Execute(RepeatNumberCommand.CommandId,
+                CreateAutomationRequest(parameters), this);
+            if (!result.Succeeded) MessageBox.Show(result.Error);
+            else FinishWriteOperation(true);
+        }
+
+        private void HandleRepeatInputClosed(object sender, FormClosedEventArgs e)
+        {
+            RepeatInputBox dialog = sender as RepeatInputBox;
+            if (dialog != null)
+            {
+                dialog.OnRepeatInput -= HandleRepeatInput;
+                dialog.FormClosed -= HandleRepeatInputClosed;
+            }
+            if (Object.ReferenceEquals(_repeatInputDialog, dialog)) _repeatInputDialog = null;
+            if (_repeatAutomationSession != null) _repeatAutomationSession.Close();
+            _repeatAutomationSession = null;
+        }
+
+        //----------------------------------------------------------------------------------------
+        // 連番作成(複数列、挿入番号、スキップ、ループ対応)
         private void repeatNumberToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            // 繰り返し
-            RepeatInputBox dialog = new RepeatInputBox();
-            if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
+            if (_repeatInputDialog != null && !_repeatInputDialog.IsDisposed)
             {
-                // 入力チェック
-                // (空白時は中止)
-                if (dialog.Value1 == "")
-                { MessageBox.Show("開始番号がない."); return; }
-                if (dialog.Value2 == "")
-                { MessageBox.Show("終了番号がない."); return; }
-                if (dialog.Value3 == "")
-                { MessageBox.Show("コマ打ち数がない."); return; }
-                if (dialog.Value4 == "")
-                { MessageBox.Show("繰り返し数がない."); return; }
-                if (dialog.Value5 == "")
-                { MessageBox.Show("スキップ数がない."); return; }
-                try
-                {
-                    if (dialog.Value6.Length > 0)
-                    {
-                        int num = int.Parse(dialog.Value6);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("入力された値を数値に変換できませんでした."); return;
-                }
-
-                int count, start, end, step, loop, skip, insert;
-                try
-                {
-                    start = int.Parse(dialog.Value1);
-                    end = int.Parse(dialog.Value2);
-                    step = int.Parse(dialog.Value3);
-                    loop = int.Parse(dialog.Value4);
-                    skip = int.Parse(dialog.Value5) + 1;
-                    insert = 1;
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("入力された値を数値に変換できませんでした."); return;
-                }
-
-                // 入力数: 開始#～終了#
-                // ※挿入番号がある場合、開始～終了番号と交互に入るので更に２倍
-                // ※スキップ数が有る場合、１／スキップ数に回数を減らす
-                // ※ループ回数は１回分の長さが決定したところで計算
-                count = end - start + 1;
-                if (dialog.Value6 != "")
-                {
-                    insert = 2;
-                    count *= 2;
-                }
-                if (skip > 1)
-                {
-                    count /= skip;
-                    count++;
-                    //挿入番号があり、カウントが奇数の場合は偶数に補正
-                    if (insert > 1 && (count % 2) == 1)
-                    {
-                        count++;
-                    }
-                }
-                count *= loop;
-
-                //範囲の消去
-                {
-                    deleteRect(selectRange);
-                }
-
-                // アンドゥグループの作成
-                UndoGroup undoGroup = new UndoGroup(
-                    setting.UndoCount++, "繰り返し", UndoOperationTarget.ToGrid);
-
-                //番号入力
-                int row = selectRange.Top;
-                for (int num = start, col = selectRange.Left; col <= selectRange.Right; col++)
-                {
-                    for (int i = 0; i < count; i++)
-                    {
-                        // アンドゥ情報の作成
-                        UndoOperation undo = new UndoOperation(
-                            col, row + (i * step),
-                            dataGridView1[col, row + (i * step)].Value.ToString(), num.ToString());
-
-                        if (insert == 1)
-                        {
-                            //挿入番号なし
-                            dataGridView1[col, row + (i * step)].Value = num.ToString();
-                            aryCellUsedCount[col]++;
-                            //(*pColorBuf)[Col][Row + (i * step)] = versionNumber;
-                            num += skip;
-                            if (num > end) num = start;
-
-                            // アンドゥ情報の記録
-                            undoGroup.Operations.Add(undo);
-                        }
-                        else if ((i % 2) == 0)
-                        {
-                            //挿入番号あり（開始＃～終了＃）
-                            //※連番と挿入番号が交互なのでカウンタを1/2にして番号計算
-                            dataGridView1[col, row + (i * step)].Value = num.ToString();
-                            aryCellUsedCount[col]++;
-                            //(*pColorBuf)[Col][Row + (i * step)] = versionNumber;
-                            num += skip;
-                            if (num > end) num = start;
-
-                            // アンドゥ情報の記録
-                            undoGroup.Operations.Add(undo);
-                        }
-                        else
-                        {
-                            //挿入番号あり（挿入＃）
-                            dataGridView1[col, row + (i * step)].Value = dialog.Value6;
-                            aryCellUsedCount[col]++;
-                            //(*pColorBuf)[Col][Row + (i * step)] = versionNumber;
-
-                            // アンドゥ情報の記録
-                            undoGroup.Operations.Add(undo);
-                        }
-                    }
-                }
-
-                // アンドゥ情報の記録
-                undoList.Add(undoGroup);
-                // アンドゥメニュ更新
-                setUndoText(undoGroup.Title);
-                // アンドゥ履歴の調整
-                processUndoLimit();
-
-                isFirstEdit = true;
-
-                // 描画更新(継続記号の更新の為)
-                dataGridView1.Invalidate();
+                _repeatInputDialog.Activate();
+                return;
             }
+
+            // 繰り返しダイアログの表示
+            _repeatAutomationSession = new AutomationSession(automationHost);
+            _repeatInputDialog = new RepeatInputBox();
+            _repeatInputDialog.OnRepeatInput += HandleRepeatInput;
+            _repeatInputDialog.FormClosed += HandleRepeatInputClosed;
+            _repeatInputDialog.Show();
         }
 
         //----------------------------------------------------------------------------------------
+        // 置換
         private void replaceToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //置換
@@ -3945,118 +2676,22 @@ namespace AEIOU
             dialog.LabelName2 = "置換後";
             if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
-                // 入力チェック
-                // (空白時は中止)
-                if (dialog.Value1 == "")
-                { MessageBox.Show("変換前指定がない."); return; }
-                if (dialog.Value2 == "")
-                { MessageBox.Show("変換後指定がない."); return; }
-
-                int Col, Row, Cnt;
-                String A = dialog.Value1;
-                String B = dialog.Value2;
-                Col = selectRange.Left;
-                Row = selectRange.Top;
-                Cnt = selectRange.Height;
-
-                // アンドゥグループの作成
-                UndoGroup undoGroup = new UndoGroup(
-                    setting.UndoCount++, "置換", UndoOperationTarget.ToGrid);
-
-                // 置き換え
-                for (int i = 0; i < Cnt; i++)
-                {
-                    if (dataGridView1[Col, Row + i].Value.ToString() == "") continue;
-
-                    // フレーム毎に値を調べて、変換前を見つけたら、変換後に書き換え
-                    if (dataGridView1[Col, Row + i].Value.ToString() == A)
-                    {
-                        // アンドゥ情報の作成
-                        UndoOperation undo = new UndoOperation(
-                            Col, Row + i,
-                            dataGridView1[Col, Row + i].Value.ToString(), B);
-
-                        if (dataGridView1[Col, Row + i].Value.ToString() == "")
-                        {
-                            aryCellUsedCount[Col]++;
-                        }
-                        dataGridView1[Col, Row + i].Value = B;
-                        //(*pColorBuf)[Col][Row + i] = versionNumber;
-
-                        // アンドゥ情報の記録
-                        undoGroup.Operations.Add(undo);
-                    }
-
-                    // アンドゥ情報の記録
-                    undoList.Add(undoGroup);
-                    // アンドゥメニュ更新
-                    setUndoText(undoGroup.Title);
-                    // アンドゥ履歴の調整
-                    processUndoLimit();
-
-                    isFirstEdit = true;
-
-                    // 描画更新(継続記号の更新の為)
-                    dataGridView1.Invalidate();
-                }
+                Dictionary<string, string> parameters = new Dictionary<string, string>();
+                parameters.Add(ReplaceCommand.BeforeParameter, dialog.Value1);
+                parameters.Add(ReplaceCommand.AfterParameter, dialog.Value2);
+                ExecuteAutomationCommand(ReplaceCommand.CommandId, parameters);
             }
         }
 
         //----------------------------------------------------------------------------------------
+        // 反転
         private void reverseToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            //反転
-            int i, c, l, Col, Row, Cnt;
-            Col = selectRange.Left;
-            Row = selectRange.Top;
-            Cnt = selectRange.Height;
-
-            //選択範囲内の記述を取得
-            int targetCount = 0;
-            String[] temp = new String[Cnt];
-            for(i = 0; i < Cnt; i++)
-            {
-                String val = dataGridView1[Col, Row + i].Value.ToString();
-                if(val == "") continue;
-                temp[targetCount++] = val;
-            }
-
-            // アンドゥグループの作成
-            UndoGroup undoGroup = new UndoGroup(
-                setting.UndoCount++, "反転", UndoOperationTarget.ToGrid);
-
-            //選択範囲内の記述を逆順に適応
-            for (i = 0; i < Cnt; i++)
-            {
-                if (dataGridView1[Col, Row + i].Value.ToString() == "") continue;
-
-                // アンドゥ情報の作成
-                UndoOperation undo = new UndoOperation(
-                    Col, Row + i,
-                    dataGridView1[Col, Row + i].Value.ToString(), "");
-
-                dataGridView1[Col, Row + i].Value = temp[--targetCount];
-                undo.NewValue = temp[targetCount];
-                //(*pColorBuf)[Col][Row + i] = versionNumber;
-
-                // アンドゥ情報の記録
-                undoGroup.Operations.Add(undo);
-            }
-
-            // アンドゥ情報の記録
-            undoList.Add(undoGroup);
-            // アンドゥメニュ更新
-            setUndoText(undoGroup.Title);
-            // アンドゥ履歴の調整
-            processUndoLimit();
-
-            isFirstEdit = true;
-
-            // 描画更新(継続記号の更新の為)
-            dataGridView1.Invalidate();
+            ExecuteAutomationCommand(ReverseCommand.CommandId, new Dictionary<string, string>());
         }
 
         //----------------------------------------------------------------------------------------
+        // 四則演算
         private void fourArithmeticOperationToolStripMenuItem_Click(object sender, EventArgs e)
         {
             //四則演算
@@ -4065,167 +2700,52 @@ namespace AEIOU
             dialog.LabelName1 = "四則演算";
             if (dialog.ShowDialog(this.owner) == System.Windows.Forms.DialogResult.OK)
             {
-                String val = dialog.Value1.Trim();
-                CalcMode mode = CalcMode.None;
-
-                int len = val.Length;
-                char mark = (char)(val[0]);
-                switch (mark)
-                {
-                    case '+':
-                        mode = CalcMode.Plus;
-                        break;
-                    case '-':
-                        mode = CalcMode.Minus;
-                        break;
-                    case '*':
-                        mode = CalcMode.Multiple;
-                        break;
-                    case '/':
-                        mode = CalcMode.Divide;
-                        break;
-                    default:
-                        //エラー
-                        //１文字目は加減乗除記号が必要
-                        MessageBox.Show("１文字目には\"+-*/\"記号のいずれか１文字の入力が必要");
-                        return;
-                        //break;
-                }
-
-                int num = 0;
-                try
-                {
-                    num = int.Parse(val.Substring(1, len - 1));
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show("入力された値を数値に変換できませんでした."); return;
-                }
-
-                // アンドゥグループの作成
-                UndoGroup undoGroup = new UndoGroup(
-                    setting.UndoCount++, "四則演算", UndoOperationTarget.ToGrid);
-
-                // アンドゥ情報の記録
-                undoList.Add(undoGroup);
-
-                Rect r = selectRange;
-                for (int c = r.Left; c <= r.Right; c++)
-                {
-                    for (int i = r.Top; i <= r.Bottom; i++)
-                    {
-                        if (dataGridView1[c,i].Value.ToString() == "" ||
-                           dataGridView1[c,i].Value.ToString() == setting.KaraCell) continue;
-
-                        int celNum = 0;
-                        try
-                        {
-                            celNum = int.Parse(dataGridView1[c, i].Value.ToString());
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show("セルの値を数値に変換できませんでした.");
-
-                            // アンドゥを行い、途中までの入力結果を取り消す
-                            undoFunction();
-
-                            return;
-                        }
-
-                        // アンドゥ情報の作成
-                        UndoOperation undo = new UndoOperation(
-                            c, i, dataGridView1[c, i].Value.ToString(), "");
-
-                        switch (mode)
-                        {
-                            case CalcMode.Plus:
-                                dataGridView1[c,i].Value = (celNum + num).ToString();
-                                undo.NewValue = (celNum + num).ToString();
-                                //(*pColorBuf)[c,i] = versionNumber;
-                                // アンドゥ情報の記録
-                                undoGroup.Operations.Add(undo);
-                                break;
-                            case CalcMode.Minus:
-                                dataGridView1[c,i].Value = (celNum - num).ToString();
-                                undo.NewValue = (celNum - num).ToString();
-                                //(*pColorBuf)[c][i] = versionNumber;
-                                break;
-                            case CalcMode.Multiple:
-                                if (celNum != 0)
-                                {
-                                    dataGridView1[c, i].Value = (celNum * num).ToString();
-                                    undo.NewValue = (celNum * num).ToString();
-                                    //(*pColorBuf)[c][i] = versionNumber;
-                                    // アンドゥ情報の記録
-                                    undoGroup.Operations.Add(undo);
-                                }
-                                break;
-                            case CalcMode.Divide:
-                                if (celNum != 0)
-                                {
-                                    dataGridView1[c, i].Value = (celNum / num).ToString();
-                                    undo.NewValue = (celNum / num).ToString();
-                                    //(*pColorBuf)[c][i] = versionNumber;
-                                    // アンドゥ情報の記録
-                                    undoGroup.Operations.Add(undo);
-                                }
-                                break;
-                        }
-                    }
-                }
-
-                // アンドゥ情報の記録
-                undoList.Add(undoGroup);
-                // アンドゥメニュ更新
-                setUndoText(undoGroup.Title);
-                // アンドゥ履歴の調整
-                processUndoLimit();
-
-                isFirstEdit = true;
-
-                // 描画更新(継続記号の更新の為)
-                dataGridView1.Invalidate();
+                String value = dialog.Value1.Trim();
+                string operation = value.Length == 0 ? String.Empty : value.Substring(0, 1);
+                string operand = value.Length < 2 ? String.Empty : value.Substring(1);
+                Dictionary<string, string> parameters = new Dictionary<string, string>();
+                parameters.Add(ArithmeticCommand.OperatorParameter, operation);
+                parameters.Add(ArithmeticCommand.OperandParameter, operand);
+                ExecuteAutomationCommand(ArithmeticCommand.CommandId, parameters);
             }
         }
 
         //----------------------------------------------------------------------------------------
+        // 複製
         private void duplicateToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // 複製
 
-            int Col, Row, Cnt, Len;
+            int Col, Row, Len;
             Col = selectRange.Left;
             Row = selectRange.Top;
             Len = selectRange.Height;
 
-            // （回数は２回固定）
-            Cnt = 2;
-
-            // アンドゥグループの作成
-            UndoGroup undoGroup = new UndoGroup(
-                setting.UndoCount++, "複製", UndoOperationTarget.ToGrid);
-
-            //複製操作
-            for (int i = 0; i < Len; i++)
+            // 貼り付け先の末尾がシート行数を超える場合は、範囲内だけ複製する
+            int maxCopyLength = GetSheetRowCount() - (Row + Len);
+            if (maxCopyLength <= 0)
             {
-                String val = dataGridView1[Col, Row + i].Value.ToString();
-
-                // アンドゥ情報の作成
-                UndoOperation undo = new UndoOperation(
-                    Col, Row + Len + i,
-                    dataGridView1[Col, Row + Len + i].Value.ToString(), val);
-
-                dataGridView1[Col, Row + Len + i].Value = val;
-                //(*pColorBuf)[Col][Row + Len + i] = versionNumber;
-
-                // アンドゥ情報の記録
-                undoGroup.Operations.Add(undo);
+                return;
             }
+
+            int copyLength = (Len < maxCopyLength) ? Len : maxCopyLength;
+
+            List<CellWriteEntry> writes = new List<CellWriteEntry>();
+            //複製操作
+            for (int i = 0; i < copyLength; i++)
+            {
+                String val = GetCellValue(Col, Row + i);
+                writes.Add(new CellWriteEntry(Row + Len + i, Col, val));
+                //(*pColorBuf)[Col][Row + Len + i] = versionNumber;
+            }
+
+            ApplyCellWrites("複製", writes);
 
             // 新しい選択範囲を設定
             Rect rect = selectRange;
             dataGridView1.ClearSelection();
             rect.Y += Len;
+            rect.Height = copyLength;
             for (int i = 0; i < rect.Height; i++)
                 for (int j = 0; j < rect.Width; j++)
                     dataGridView1[rect.X + j, rect.Y + i].Selected = true;
@@ -4233,20 +2753,11 @@ namespace AEIOU
             // 範囲を保存
             selectRange = rect;
 
-            // アンドゥ情報の記録
-            undoList.Add(undoGroup);
-            // アンドゥメニュ更新
-            setUndoText(undoGroup.Title);
-            // アンドゥ履歴の調整
-            processUndoLimit();
-
-            isFirstEdit = true;
-
-            // 描画更新(継続記号の更新の為)
-            dataGridView1.Invalidate();
+            FinishWriteOperation(true);
         }
 
         //----------------------------------------------------------------------------------------
+        // STS 保存
         private void saveSTSToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // STS 保存
@@ -4263,166 +2774,60 @@ namespace AEIOU
             //ダイアログを表示する
             if (dialog.ShowDialog(this.owner) == DialogResult.OK)
             {
-                //OKボタンがクリックされた場合は、保存実行
-
-                //------------------------
-                // 各セルのキーをなめて、コマ数とセルの値を書き出す
-                // ※fpsなどの設定は無視
-                FileStream outfs;
-                char[] header = { (char)0x11, 'S', 'h', 'i', 'r', 'a', 'h', 'e', 'i', 'T', 'i', 'm', 'e', 'S', 'h', 'e', 'e', 't' };
-                int col = setting.ColLength;
-                long row = setting.RowLength;
                 try
                 {
-                    outfs = new FileStream(dialog.FileName, FileMode.Create);
+                    stsFileService.Save(dialog.FileName, GetSheetColumnCount(), GetSheetRowCount(),
+                        GetCellValue, GetHeaderValue);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     MessageBox.Show("指定ファイルを開けませんでした.");
-                    return;
                 }
-
-                {
-                    // ヘッダ
-                    byte[] temp = new byte[header.Length];
-                    for (int i = 0; i < header.Length; i++)
-                        temp[i] = (byte)header[i];
-                    outfs.Write(temp,0,temp.Length);
-                }
-
-                {
-                    // 列数
-                    byte colCount = (Byte)col;
-                    outfs.WriteByte(colCount);
-
-                    // 行数
-                    UInt32 rowCount = (UInt32)row;
-                    byte[] temp = BitConverter.GetBytes(rowCount);
-                    outfs.Write(temp, 0, temp.Length);
-                }
-
-                // セル
-                for (int i = 0; i < col; i++)
-                {
-                    UInt16 current = 0;    // 初期状態は空セル( = 0)
-                    for (int j = 0; j < row; j++)
-                    {
-                        if (dataGridView1[i, j].Value.ToString() == "")
-                        {
-                            //(特に何もしない)
-                        }
-                        else
-                        {
-                            //セルの値を変換してカレント値を更新
-                            UInt16 val = 0;
-                            try
-                            {
-                                val = UInt16.Parse(dataGridView1[i, j].Value.ToString());
-                            }
-                            catch (Exception ex)
-                            {
-                            }
-                            current = val;
-                        }
-                        // カレントの値を書き出す
-                        byte[] temp = BitConverter.GetBytes(current);
-                        outfs.Write(temp, 0, temp.Length);
-                    }
-                }
-
-                // 各セルの名称を出力
-                for (int i = 0; i < col; i++)
-                {
-                    byte[] name = Encoding.GetEncoding("Shift_JIS").GetBytes(dataGridView1.Columns[i].HeaderText);
-                    outfs.WriteByte((byte)name.Length);
-                    outfs.Write(name, 0, name.Length);
-                }
-
-                // ストリームを閉じる
-                outfs.Close();
-
             }
 
         }
 
         //----------------------------------------------------------------------------------------
+        // STS 読み込み
         private void loadSTS(String path)
         {
-            FileStream inpfs;
-            char[] header = { (char)0x11, 'S', 'h', 'i', 'r', 'a', 'h', 'e', 'i', 'T', 'i', 'm', 'e', 'S', 'h', 'e', 'e', 't' };
-            int col = setting.ColLength;
-            int row = setting.RowLength;
+            StsDocument document;
             try
             {
-                inpfs = new FileStream(path, FileMode.Open);
+                document = stsFileService.Load(path);
             }
-            catch (Exception ex)
+            catch (InvalidDataException)
+            {
+                MessageBox.Show("未対応のファイルの為、開けませんでした.");
+                return;
+            }
+            catch (Exception)
             {
                 MessageBox.Show("指定ファイルを開けませんでした.");
                 return;
             }
 
-            {
-                //ヘッダ
-                byte[] temp = new byte[header.Length];
-                inpfs.Read(temp, 0, header.Length);
-                for (int i = 0; i < header.Length; i++)
-                {
-                    if ((byte)header[i] != temp[i])
-                    {
-                        MessageBox.Show("未対応のファイルの為、開けませんでした.");
-                        return;
-                    }
-                }
-            }
-
-            {
-                // 列・行
-                byte[] rowLen = new byte[sizeof(UInt32)];
-                col = inpfs.ReadByte();
-                inpfs.Read(rowLen, 0, rowLen.Length);
-                row = (int)BitConverter.ToUInt32(rowLen, 0);
-            }
-
             // グリッドサイズをデータに合わせる
-            setting.ColLength = col;
-            setting.RowLength = row;
+            setting.ColLength = document.ColumnCount;
+            setting.RowLength = document.RowCount;
             InitializeWork(false);
 
-            // セル
-            byte[] cell = new byte[sizeof(UInt16)];
-            for (int i = 0; i < col; i++)
+            foreach (StsCellChange change in document.CellChanges)
             {
-                UInt16 current = 0;
-                for (int j = 0; j < row; j++)
-                {
-                    inpfs.Read(cell, 0, cell.Length);
-                    UInt16 val = BitConverter.ToUInt16(cell, 0);
-
-                    // 読み込む際は値の変更部分だけをセルに反映
-                    if (current != val)
-                    {
-                        current = val;
-                        dataGridView1[i, j].Value = val.ToString();
-                    }
-                }
+                SetCellValueIfChanged(change.Column, change.Row, change.Value);
             }
 
-            // 各セルの名称を入力
-            for (int i = 0; i < col; i++)
+            for (int i = 0; i < document.Headers.Count; i++)
             {
-                int nameLen = inpfs.ReadByte();
-                byte[] temp = new byte[nameLen];
-                inpfs.Read(temp, 0, nameLen);
-                dataGridView1.Columns[i].HeaderText =
-                    Encoding.GetEncoding("Shift_JIS").GetString(temp);
+                SetHeaderValue(i, document.Headers[i]);
             }
 
-            // ストリームを閉じる
-            inpfs.Close();
+            // 読み込み結果は確定状態とし、Undo履歴をクリアする（旧実装互換）。
+            flushUndoHistory();
         }
 
         //----------------------------------------------------------------------------------------
+        // STS 読み込み(メニューから)
         private void loadSTSToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // STS 読み込み
@@ -4450,10 +2855,31 @@ namespace AEIOU
         }
 
         //----------------------------------------------------------------------------------------
+        // セル列のヘッダがクリックされた場合に、１列選択する（ダブルクリックが名称編集なので、クリックで全選択に）
+        private void dataGridView1_ColumnHeaderMouseClick(object sender, DataGridViewCellMouseEventArgs e)
+        {
+            // セル列のヘッダがクリックされた場合に、１列選択する（ダブルクリックが名称編集なので、クリックで全選択に）
+
+            // 選択をクリア
+            dataGridView1.ClearSelection();
+
+            // 選択した列の最初のセルに移動
+            dataGridView1.CurrentCell = dataGridView1[e.ColumnIndex, 0];
+
+            // 列全体を選択
+            for (int row = 0; row < dataGridView1.RowCount; row++)
+            {
+                dataGridView1[e.ColumnIndex, row].Selected = true;
+            }
+        }
+
+        //----------------------------------------------------------------------------------------
+        // フォーム表示後の処理
         private void Form1_Shown(object sender, EventArgs e)
         {
-            //コントロールにフォーカスを設定
+            // コントロールにフォーカスを設定
             dataGridView1.Focus();
+
         }
     }
 

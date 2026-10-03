@@ -2,6 +2,22 @@
 Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual Studio 2010
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AEIOU", "WindowsFormsApplication1\AEIOU.csproj", "{75C85D01-1B94-4BE3-BAA3-95CA99B2224F}"
+	ProjectSection(ProjectDependencies) = postProject
+		{B275B027-369A-45F7-AF62-B1A492F96E91} = {B275B027-369A-45F7-AF62-B1A492F96E91}
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AEIOU.Automation.Abstractions", "AEIOU.Automation.Abstractions\AEIOU.Automation.Abstractions.csproj", "{B275B027-369A-45F7-AF62-B1A492F96E91}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AEIOU.Automation.Tests", "AEIOU.Automation.Tests\AEIOU.Automation.Tests.csproj", "{5538D10E-9084-4A56-87C0-67EE8BA159C4}"
+	ProjectSection(ProjectDependencies) = postProject
+		{75C85D01-1B94-4BE3-BAA3-95CA99B2224F} = {75C85D01-1B94-4BE3-BAA3-95CA99B2224F}
+		{B275B027-369A-45F7-AF62-B1A492F96E91} = {B275B027-369A-45F7-AF62-B1A492F96E91}
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AEIOU.Automation.Sample.Random", "AEIOU.Automation.Sample.Random\AEIOU.Automation.Sample.Random.csproj", "{A9E91B44-8210-4B11-93C0-FC46A4282498}"
+	ProjectSection(ProjectDependencies) = postProject
+		{B275B027-369A-45F7-AF62-B1A492F96E91} = {B275B027-369A-45F7-AF62-B1A492F96E91}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -19,6 +35,30 @@ Global
 		{75C85D01-1B94-4BE3-BAA3-95CA99B2224F}.Release|x64.Build.0 = Release|x64
 		{75C85D01-1B94-4BE3-BAA3-95CA99B2224F}.Release|x86.ActiveCfg = Release|x86
 		{75C85D01-1B94-4BE3-BAA3-95CA99B2224F}.Release|x86.Build.0 = Release|x86
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Debug|x64.ActiveCfg = Debug|x64
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Debug|x64.Build.0 = Debug|x64
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Debug|x86.ActiveCfg = Debug|x86
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Debug|x86.Build.0 = Debug|x86
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Release|x64.ActiveCfg = Release|x64
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Release|x64.Build.0 = Release|x64
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Release|x86.ActiveCfg = Release|x86
+		{B275B027-369A-45F7-AF62-B1A492F96E91}.Release|x86.Build.0 = Release|x86
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Debug|x64.ActiveCfg = Debug|x64
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Debug|x64.Build.0 = Debug|x64
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Debug|x86.ActiveCfg = Debug|x86
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Debug|x86.Build.0 = Debug|x86
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Release|x64.ActiveCfg = Release|x64
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Release|x64.Build.0 = Release|x64
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Release|x86.ActiveCfg = Release|x86
+		{5538D10E-9084-4A56-87C0-67EE8BA159C4}.Release|x86.Build.0 = Release|x86
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Debug|x64.ActiveCfg = Debug|x64
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Debug|x64.Build.0 = Debug|x64
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Debug|x86.ActiveCfg = Debug|x86
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Debug|x86.Build.0 = Debug|x86
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Release|x64.ActiveCfg = Release|x64
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Release|x64.Build.0 = Release|x64
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Release|x86.ActiveCfg = Release|x86
+		{A9E91B44-8210-4B11-93C0-FC46A4282498}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

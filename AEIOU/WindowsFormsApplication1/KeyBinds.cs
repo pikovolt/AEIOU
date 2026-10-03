@@ -101,8 +101,8 @@ namespace AEIOU
             KaraCellNoMove = getInnerText("karaCellNoMove", doc.SelectNodes("/document/pref/shortcuts/karaCellNoMove"));
             InputSheetSec = getInnerText("inputSheetSec", doc.SelectNodes("/document/pref/shortcuts/inputSheetSec"));
             SetSheetDiv4 = getInnerText("setSheetDiv4", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv4"));
-            SetSheetDiv6 = getInnerText("setSheetDiv6", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv6"));
-            SetSheetDiv12 = getInnerText("setSheetDiv12", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv12"));
+            SetSheetDiv6 = getInnerText("setSheetDiv4", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv6"));
+            SetSheetDiv12 = getInnerText("setSheetDiv4", doc.SelectNodes("/document/pref/shortcuts/setSheetDiv12"));
             StayOnTop = getInnerText("stayOnTop", doc.SelectNodes("/document/pref/shortcuts/stayOnTop"));
             AutoAdjust = getInnerText("autoAdjust", doc.SelectNodes("/document/pref/shortcuts/autoAdjust"));
             DisplayFrameNumber = getInnerText("displayFrameNumber", doc.SelectNodes("/document/pref/shortcuts/displayFrameNumber"));
@@ -282,13 +282,10 @@ namespace AEIOU
         {
             //変換した値を取得
             int value = code + convShift(alt, ctrl, shift);
-            try
+            int convertedValue;
+            if (Keymap.TryGetValue(value, out convertedValue))
             {
-                value = Keymap[value];
-            }
-            catch (Exception e)
-            {
-                // (対応する値がない場合はここに来る)
+                value = convertedValue;
             }
             return value;
         }
@@ -298,13 +295,10 @@ namespace AEIOU
         {
             // 変換前の値を取得
             int value = code;
-            try
+            int originalValue;
+            if (KeymapRev.TryGetValue(value, out originalValue))
             {
-                value = KeymapRev[value];
-            }
-            catch (Exception e)
-            {
-                // (対応する値がない場合はここに来る)
+                value = originalValue;
             }
 
             // コンビネーションキー情報を取り出す
@@ -323,13 +317,10 @@ namespace AEIOU
         {
             // 変換前の値を取得
             int value = code;
-            try
+            int originalValue;
+            if (KeymapRev.TryGetValue(value, out originalValue))
             {
-                value = KeymapRev[value];
-            }
-            catch (Exception e)
-            {
-                // (対応する値がない場合はここに来る)
+                value = originalValue;
             }
 
             // コンビネーションキー情報を取り出す
